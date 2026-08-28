@@ -1,0 +1,151 @@
+{
+  "manifest_version": 1,
+  "type": "device",
+  "name": "Subsonic",
+  "description": {
+    "en": "Link Gladys with a Subsonic-compatible music server: Navidrome, Airsonic, Gonic...",
+    "fr": "Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic..."
+  },
+  "version": "1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-subsonic:1.0.0",
+  "gladys_version": ">=4.86.0",
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-subsonic/main/cover.png",
+  "categories": ["multimedia"],
+  "config_schema": [
+    {
+      "key": "intro",
+      "type": "section",
+      "label": { "en": "Server connection", "fr": "Connexion au serveur" },
+      "description": {
+        "en": "Works with any server implementing the Subsonic API (Navidrome, Airsonic-Advanced, Gonic...). Use a dedicated user account if you can. The URL is the root of the server, e.g. https://music.example.com or http://192.168.1.10:4533.",
+        "fr": "Fonctionne avec tout serveur implémentant l'API Subsonic (Navidrome, Airsonic-Advanced, Gonic...). Utilisez si possible un compte utilisateur dédié. L'URL est la racine du serveur, ex. https://music.example.com ou http://192.168.1.10:4533."
+      },
+      "links": [
+        {
+          "url": "https://www.subsonic.org/pages/api.jsp",
+          "label": { "en": "Subsonic API documentation", "fr": "Documentation de l'API Subsonic" }
+        },
+        {
+          "url": "https://www.navidrome.org/docs/",
+          "label": { "en": "Navidrome documentation", "fr": "Documentation Navidrome" }
+        }
+      ]
+    },
+    {
+      "key": "server_url",
+      "type": "string",
+      "label": { "en": "Server URL", "fr": "URL du serveur" },
+      "description": {
+        "en": "Root URL of the Subsonic server, without /rest.",
+        "fr": "URL racine du serveur Subsonic, sans /rest."
+      },
+      "required": true
+    },
+    {
+      "key": "username",
+      "type": "string",
+      "label": { "en": "Username", "fr": "Utilisateur" },
+      "required": true
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": { "en": "Password", "fr": "Mot de passe" },
+      "required": true
+    },
+    {
+      "key": "auth_method",
+      "type": "select",
+      "label": { "en": "Authentication method", "fr": "Méthode d'authentification" },
+      "description": {
+        "en": "Token (md5 + salt) is supported by every modern server. Use legacy only for pre-1.13 servers or LDAP users.",
+        "fr": "Le jeton (md5 + sel) est géré par tous les serveurs modernes. N'utilisez legacy que pour les serveurs pré-1.13 ou les comptes LDAP."
+      },
+      "required": false,
+      "default": "token",
+      "options": [
+        { "value": "token", "label": { "en": "Token (recommended)", "fr": "Jeton (recommandé)" } },
+        {
+          "value": "legacy",
+          "label": { "en": "Legacy (obfuscated password)", "fr": "Legacy (mot de passe obfusqué)" }
+        }
+      ]
+    },
+    {
+      "key": "poll_frequency",
+      "type": "number",
+      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "description": {
+        "en": "How often the server sensors are polled, in seconds.",
+        "fr": "Fréquence d'interrogation des capteurs du serveur, en secondes."
+      },
+      "required": false,
+      "default": 60,
+      "min": 10,
+      "max": 3600
+    },
+    {
+      "key": "jukebox_section",
+      "type": "section",
+      "label": { "en": "Jukebox (server-side playback)", "fr": "Jukebox (lecture côté serveur)" },
+      "description": {
+        "en": "The jukebox plays music on the machine hosting the server. It must also be enabled server-side: in Navidrome, set Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) and make sure the host has an audio output.",
+        "fr": "Le jukebox joue la musique sur la machine qui héberge le serveur. Il doit aussi être activé côté serveur : dans Navidrome, réglez Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) et vérifiez que l'hôte a une sortie audio."
+      },
+      "links": [
+        {
+          "url": "https://www.navidrome.org/docs/usage/jukebox/",
+          "label": { "en": "Navidrome jukebox mode", "fr": "Mode jukebox de Navidrome" }
+        }
+      ]
+    },
+    {
+      "key": "jukebox_enabled",
+      "type": "boolean",
+      "label": { "en": "Enable the jukebox device", "fr": "Activer l'appareil jukebox" },
+      "required": false,
+      "default": false
+    }
+  ],
+  "actions": [
+    {
+      "key": "test_connection",
+      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "timeout_seconds": 30
+    },
+    {
+      "key": "start_scan",
+      "label": { "en": "Scan the music library", "fr": "Scanner la bibliothèque musicale" },
+      "timeout_seconds": 30
+    },
+    {
+      "key": "jukebox_play_random",
+      "label": { "en": "Jukebox: play random songs", "fr": "Jukebox : lecture aléatoire" },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "count",
+          "type": "number",
+          "label": { "en": "Number of songs", "fr": "Nombre de morceaux" },
+          "required": false,
+          "default": 20,
+          "min": 1,
+          "max": 500
+        }
+      ]
+    },
+    {
+      "key": "jukebox_play_playlist",
+      "label": { "en": "Jukebox: play a playlist", "fr": "Jukebox : jouer une playlist" },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "playlist",
+          "type": "string",
+          "label": { "en": "Playlist name", "fr": "Nom de la playlist" },
+          "required": true
+        }
+      ]
+    }
+  ]
+}
