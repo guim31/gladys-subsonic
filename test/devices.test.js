@@ -74,6 +74,20 @@ test('manifest action keys are unique across blueprints', () => {
   assert.equal(new Set(keys).size, keys.length, 'no two blueprints may register the same action');
 });
 
+test('every polled device opts into polling explicitly', () => {
+  // Gladys registers a device in its poll manager only when should_poll is
+  // true (should_poll defaults to false in DB): a device carrying onPoll but
+  // not the flag is silently never polled, and its sensors stay empty.
+  for (const bp of DEVICE_BLUEPRINTS) {
+    if (typeof bp.onPoll !== 'function') {
+      continue;
+    }
+    const device = bp.buildDevice(gladys, jukeboxConfig);
+    assert.equal(device.should_poll, true, `${bp.key} must declare should_poll`);
+    assert.ok(device.poll_frequency > 0, `${bp.key} must declare a poll_frequency`);
+  }
+});
+
 test('the server device carries the three read-only counter sensors', () => {
   const device = server.buildDevice(gladys, baseConfig);
   // 60 s in config -> 60000 ms, one of the values Gladys accepts.

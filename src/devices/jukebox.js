@@ -63,7 +63,8 @@ export const jukebox = {
     return {
       name: 'Subsonic jukebox',
       external_id: ids.device,
-      // Gladys only accepts a closed list of values, in ms: snap to it.
+      // Both are required for Gladys to poll us: see server.js.
+      should_poll: true,
       poll_frequency: pollFrequencyMs(config),
       features: [
         command('Play', FEATURE.PLAY, DEVICE_FEATURE_TYPES.MUSIC.PLAY),

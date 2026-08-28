@@ -78,6 +78,11 @@ déclencher les boutons **Lecture aléatoire** (N morceaux au hasard) ou
   pas sur l'appareil où tourne Gladys. Vérifiez `Jukebox.Enabled` et la
   sortie audio de l'hôte (accès au périphérique audio du conteneur Docker le
   cas échéant).
+- **Les capteurs affichent « Pas de valeur récente »** : ils n'ont encore
+  jamais été relevés. Après une mise à jour de l'intégration, retournez dans
+  l'onglet **Découverte** et recliquez sur l'appareil : cela réapplique sa
+  définition (dont l'activation du relevé périodique) à l'appareil déjà créé.
+  La première valeur arrive au relevé suivant (60 s par défaut).
 - **Les capteurs ne bougent pas** : le nombre d'artistes/albums ne change
   qu'après un scan de la bibliothèque — utilisez le bouton **Scanner la
   bibliothèque musicale**.

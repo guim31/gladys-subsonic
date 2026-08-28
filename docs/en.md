@@ -72,5 +72,10 @@ buttons.
 - **The jukebox makes no sound**: the audio comes out of the server host, not
   the device running Gladys. Check `Jukebox.Enabled` and the host's audio
   output (audio device access for a Docker container, if applicable).
+- **The sensors show "no recent value"**: they have never been polled yet.
+  After updating the integration, go back to the **Discovery** tab and click
+  the device again: this re-applies its definition (including the periodic
+  polling flag) to the already created device. The first value lands on the
+  next poll (60 s by default).
 - **The sensors never change**: the artist/album counters only move after a
   library scan — use the **Scan the music library** button.

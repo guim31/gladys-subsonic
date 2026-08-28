@@ -52,8 +52,11 @@ export const server = {
     return {
       name: 'Subsonic server',
       external_id: ids.device,
-      // Gladys will call onPoll at this interval (in seconds).
-      // Gladys only accepts a closed list of values, in ms: snap to it.
+      // Polling is opt-in: Gladys only registers a device in its poll
+      // manager when should_poll is true (it defaults to false in DB), and
+      // poll_frequency must be one of its allowed values, in milliseconds.
+      // Without BOTH, onPoll is never called and the sensors stay empty.
+      should_poll: true,
       poll_frequency: pollFrequencyMs(config),
       features: [
         {
