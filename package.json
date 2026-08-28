@@ -1,6 +1,6 @@
 {
   "name": "gladys-subsonic",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Gladys Assistant external integration for Subsonic-compatible music servers (Navidrome, Airsonic, Gonic...).",
   "type": "module",
