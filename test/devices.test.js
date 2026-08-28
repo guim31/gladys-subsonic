@@ -76,7 +76,8 @@ test('manifest action keys are unique across blueprints', () => {
 
 test('the server device carries the three read-only counter sensors', () => {
   const device = server.buildDevice(gladys, baseConfig);
-  assert.equal(device.poll_frequency, baseConfig.poll_frequency);
+  // 60 s in config -> 60000 ms, one of the values Gladys accepts.
+  assert.equal(device.poll_frequency, 60000);
   assert.equal(device.features.length, 3);
   for (const feature of device.features) {
     assert.equal(feature.category, DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR);

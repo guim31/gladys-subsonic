@@ -12,7 +12,7 @@ import {
   DEVICE_FEATURE_TYPES,
 } from '@gladysassistant/integration-sdk';
 import { ping, getNowPlaying, getArtists, startScan, getScanStatus } from '../subsonic.js';
-import { isConfigured } from '../config.js';
+import { isConfigured, pollFrequencyMs } from '../config.js';
 
 const DEVICE_TYPE = 'server';
 
@@ -53,7 +53,8 @@ export const server = {
       name: 'Subsonic server',
       external_id: ids.device,
       // Gladys will call onPoll at this interval (in seconds).
-      poll_frequency: config.poll_frequency,
+      // Gladys only accepts a closed list of values, in ms: snap to it.
+      poll_frequency: pollFrequencyMs(config),
       features: [
         {
           name: 'Active streams',

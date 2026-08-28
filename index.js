@@ -115,13 +115,26 @@ async function checkServerAndPublish() {
       `Subsonic server reachable: ${info.type ?? 'subsonic'} ` +
         `${info.serverVersion ?? ''} (API ${info.version})`,
     );
-    await gladys.publishDiscoveredDevices(buildDiscoveredDevices(gladys, config));
-    await gladys.setConnectionStatus(true);
   } catch (err) {
     logger.error(`Subsonic server check failed: ${err.message}`);
     await gladys.setConnectionStatus(false, {
       en: `Cannot reach the Subsonic server: ${err.message}`,
       fr: `Impossible de joindre le serveur Subsonic : ${err.message}`,
+    });
+    return;
+  }
+
+  // The server answers: a failure past this point is about the device
+  // publication (rejected payload...), not about reachability — report it
+  // as such, or the status message sends the user chasing network issues.
+  try {
+    await gladys.publishDiscoveredDevices(buildDiscoveredDevices(gladys, config));
+    await gladys.setConnectionStatus(true);
+  } catch (err) {
+    logger.error(`Publishing the devices failed: ${err.message}`);
+    await gladys.setConnectionStatus(false, {
+      en: `Server reachable, but publishing the devices failed: ${err.message}`,
+      fr: `Serveur joignable, mais la publication des appareils a échoué : ${err.message}`,
     });
   }
 }

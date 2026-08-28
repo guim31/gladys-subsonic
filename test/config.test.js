@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeConfig, isConfigured, DEFAULT_CONFIG } from '../src/config.js';
+import { normalizeConfig, isConfigured, pollFrequencyMs, DEFAULT_CONFIG } from '../src/config.js';
 
 test('normalizeConfig returns the defaults when called with no argument', () => {
   assert.deepEqual(normalizeConfig(), DEFAULT_CONFIG);
@@ -51,6 +51,17 @@ test('jukebox_enabled accepts the boolean and its form-string variant', () => {
   assert.equal(normalizeConfig({ jukebox_enabled: true }).jukebox_enabled, true);
   assert.equal(normalizeConfig({ jukebox_enabled: 'true' }).jukebox_enabled, true);
   assert.equal(normalizeConfig({ jukebox_enabled: false }).jukebox_enabled, false);
+});
+
+test('pollFrequencyMs only emits the poll frequencies Gladys accepts, in ms', () => {
+  // Gladys rejects any device poll_frequency outside its closed list
+  // (60000, 30000, 15000, 10000, 2000, 1000 ms): snap to the closest.
+  assert.equal(pollFrequencyMs(normalizeConfig()), 60000);
+  assert.equal(pollFrequencyMs(normalizeConfig({ poll_frequency: 30 })), 30000);
+  assert.equal(pollFrequencyMs(normalizeConfig({ poll_frequency: 12 })), 10000);
+  assert.equal(pollFrequencyMs(normalizeConfig({ poll_frequency: 40 })), 30000);
+  assert.equal(pollFrequencyMs(normalizeConfig({ poll_frequency: 3600 })), 60000);
+  assert.equal(pollFrequencyMs(normalizeConfig({ poll_frequency: 'garbage' })), 60000);
 });
 
 test('isConfigured requires the URL, the username and the password', () => {

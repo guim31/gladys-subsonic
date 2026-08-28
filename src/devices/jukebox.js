@@ -18,7 +18,7 @@ import {
   DEVICE_FEATURE_TYPES,
 } from '@gladysassistant/integration-sdk';
 import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } from '../subsonic.js';
-import { isConfigured } from '../config.js';
+import { isConfigured, pollFrequencyMs } from '../config.js';
 import { serverPlatformId } from './server.js';
 
 const DEVICE_TYPE = 'jukebox';
@@ -63,7 +63,8 @@ export const jukebox = {
     return {
       name: 'Subsonic jukebox',
       external_id: ids.device,
-      poll_frequency: config.poll_frequency,
+      // Gladys only accepts a closed list of values, in ms: snap to it.
+      poll_frequency: pollFrequencyMs(config),
       features: [
         command('Play', FEATURE.PLAY, DEVICE_FEATURE_TYPES.MUSIC.PLAY),
         command('Pause', FEATURE.PAUSE, DEVICE_FEATURE_TYPES.MUSIC.PAUSE),

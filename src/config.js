@@ -64,3 +64,27 @@ function normalizeServerUrl(rawUrl) {
 export function isConfigured(config) {
   return Boolean(config.server_url && config.username && config.password);
 }
+
+// Gladys only accepts a device `poll_frequency` from a closed list of values,
+// in MILLISECONDS (DEVICE_POLL_FREQUENCIES in the Gladys server): 60000,
+// 30000, 15000, 10000, 2000 and 1000. Anything else rejects the whole
+// device publication with "invalid poll frequency". Sub-10s HTTP polling
+// of a music server is pointless, so we only ever emit these:
+const ALLOWED_POLL_SECONDS = [60, 30, 15, 10];
+
+/**
+ * Convert the configured interval (seconds) into a poll_frequency Gladys
+ * accepts: the closest allowed value, in milliseconds.
+ * @param {ReturnType<typeof normalizeConfig>} config
+ * @returns {number} milliseconds
+ */
+export function pollFrequencyMs(config) {
+  const seconds = Number(config.poll_frequency);
+  if (!Number.isFinite(seconds)) {
+    return DEFAULT_CONFIG.poll_frequency * 1000;
+  }
+  const closest = ALLOWED_POLL_SECONDS.reduce((best, candidate) =>
+    Math.abs(candidate - seconds) < Math.abs(best - seconds) ? candidate : best,
+  );
+  return closest * 1000;
+}

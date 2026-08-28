@@ -109,13 +109,13 @@
         "fr": "Intervalle de rafraîchissement (s)"
       },
       "description": {
-        "en": "How often the server sensors are polled, in seconds.",
-        "fr": "Fréquence d'interrogation des capteurs du serveur, en secondes."
+        "en": "How often the server sensors are polled, in seconds. Gladys only supports 10, 15, 30 or 60 s: the value is snapped to the closest one.",
+        "fr": "Fréquence d'interrogation des capteurs du serveur, en secondes. Gladys ne gère que 10, 15, 30 ou 60 s : la valeur est alignée sur la plus proche."
       },
       "required": false,
       "default": 60,
       "min": 10,
-      "max": 3600
+      "max": 60
     },
     {
       "key": "jukebox_section",
