@@ -71,6 +71,10 @@ jobs:
             gladys-assistant-integration.json > "$tmp"
           mv "$tmp" gladys-assistant-integration.json
 
+          # jq's output is not Prettier-formatted: re-format the manifest so
+          # the release commit keeps the CI `format:check` gate green.
+          npx --yes prettier@^3 --write gladys-assistant-integration.json
+
           echo "version=${new_version}" >> "$GITHUB_OUTPUT"
 
       # Note: if the branch you release from is protected against direct pushes,
