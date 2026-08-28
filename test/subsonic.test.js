@@ -4,6 +4,7 @@ import {
   buildAuthParams,
   buildUrl,
   request,
+  redactAuth,
   asArray,
   ping,
   jukeboxControl,
@@ -103,6 +104,34 @@ test('jukeboxControl returns the playlist for get and the status otherwise', asy
     assert.equal(status.gain, 0.5);
   } finally {
     mock.restore();
+  }
+});
+
+test('redactAuth blanks the token, salt and legacy password of an embedded URL', () => {
+  const text =
+    'Failed to parse URL from host/rest/ping.view?u=admin&t=26719a11&s=c19b2d&p=enc:abc&v=1.16.1';
+  const redacted = redactAuth(text);
+  assert.ok(!redacted.includes('26719a11'), 'token must be redacted');
+  assert.ok(!redacted.includes('c19b2d'), 'salt must be redacted');
+  assert.ok(!redacted.includes('enc:abc'), 'legacy password must be redacted');
+  assert.ok(redacted.includes('u=admin'), 'non-secret params stay readable');
+});
+
+test('a network failure never leaks the auth parameters in the error message', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    throw new TypeError(`Failed to parse URL from ${url}`);
+  };
+  try {
+    await assert.rejects(
+      () => request(config, 'ping'),
+      (err) =>
+        /ping request failed/.test(err.message) &&
+        !/[?&]t=(?!\*\*\*)/.test(err.message) &&
+        !/[?&]s=(?!\*\*\*)/.test(err.message),
+    );
+  } finally {
+    globalThis.fetch = realFetch;
   }
 });
 

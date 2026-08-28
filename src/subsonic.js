@@ -99,7 +99,17 @@ export async function request(config, endpoint, params = {}) {
   const url = buildUrl(config, endpoint, params);
   logger.debug(`-> ${endpoint}`);
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  let response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  } catch (err) {
+    // fetch errors can embed the full URL, whose query carries replayable
+    // credentials (t + s, or the legacy p): never let them leak into the
+    // connection status or the logs. Deliberately NOT attached as `cause`,
+    // for the same reason.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(`${endpoint} request failed: ${redactAuth(causeMessage(err))}`);
+  }
   if (!response.ok) {
     throw new Error(`Subsonic HTTP ${response.status} on ${endpoint}`);
   }
@@ -113,6 +123,22 @@ export async function request(config, endpoint, params = {}) {
     throw new SubsonicError(envelope.error?.code ?? 0, envelope.error?.message);
   }
   return envelope;
+}
+
+/**
+ * Blank out the sensitive auth query parameters (token, salt, password) in a
+ * text that may embed a request URL.
+ * @param {string} text
+ * @returns {string}
+ */
+export function redactAuth(text) {
+  return text.replace(/([?&](?:t|s|p)=)[^&\s"']+/gi, '$1***');
+}
+
+/** Prefer the network cause of a fetch TypeError over its generic message. */
+function causeMessage(err) {
+  const cause = err?.cause?.message ?? err?.cause?.code;
+  return cause ? `${err.message} (${cause})` : (err?.message ?? String(err));
 }
 
 /**

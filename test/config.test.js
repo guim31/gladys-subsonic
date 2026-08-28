@@ -17,6 +17,23 @@ test('normalizeConfig strips the trailing slash and spaces from the server URL',
   );
 });
 
+test('normalizeConfig adds the missing scheme to a bare host:port', () => {
+  assert.equal(
+    normalizeConfig({ server_url: '192.168.100.150:4533' }).server_url,
+    'http://192.168.100.150:4533',
+  );
+  assert.equal(
+    normalizeConfig({ server_url: 'music.example.com' }).server_url,
+    'http://music.example.com',
+  );
+  // An explicit scheme is kept untouched.
+  assert.equal(
+    normalizeConfig({ server_url: 'https://music.example.com' }).server_url,
+    'https://music.example.com',
+  );
+  assert.equal(normalizeConfig({ server_url: '' }).server_url, '');
+});
+
 test('normalizeConfig coerces numeric strings coming from a form', () => {
   const config = normalizeConfig({ poll_frequency: '120' });
   assert.equal(config.poll_frequency, 120);

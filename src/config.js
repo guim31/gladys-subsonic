@@ -30,10 +30,10 @@ export function normalizeConfig(raw = {}) {
     ...DEFAULT_CONFIG,
     ...raw,
     // The URL is used as a prefix everywhere: no surrounding spaces, no
-    // trailing slash (we always append `/rest/...` ourselves).
-    server_url: String(raw.server_url ?? DEFAULT_CONFIG.server_url)
-      .trim()
-      .replace(/\/+$/, ''),
+    // trailing slash (we always append `/rest/...` ourselves), and always a
+    // scheme — users commonly type a bare `192.168.1.10:4533`, which fetch()
+    // cannot parse, so default to http:// when none is given.
+    server_url: normalizeServerUrl(raw.server_url ?? DEFAULT_CONFIG.server_url),
     username: String(raw.username ?? DEFAULT_CONFIG.username).trim(),
     password: String(raw.password ?? DEFAULT_CONFIG.password),
     auth_method: raw.auth_method === 'legacy' ? 'legacy' : 'token',
@@ -41,6 +41,20 @@ export function normalizeConfig(raw = {}) {
     poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
     jukebox_enabled: raw.jukebox_enabled === true || raw.jukebox_enabled === 'true',
   };
+}
+
+/**
+ * Trim, strip the trailing slash, and add the missing scheme (http:// by
+ * default: LAN installs rarely have TLS; anyone with TLS types https://).
+ * @param {unknown} rawUrl
+ * @returns {string}
+ */
+function normalizeServerUrl(rawUrl) {
+  const url = String(rawUrl).trim().replace(/\/+$/, '');
+  if (url === '' || /^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+    return url;
+  }
+  return `http://${url}`;
 }
 
 /**
