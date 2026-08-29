@@ -169,6 +169,11 @@ export const server = {
           external_id: ids.feature(FEATURE.NOW_PLAYING),
           category: DEVICE_FEATURE_CATEGORIES.TEXT,
           type: DEVICE_FEATURE_TYPES.TEXT.TEXT,
+          // Meaningless for a text feature, but Gladys stores min/max as NOT
+          // NULL columns and rejects the whole device without them: 0/0 is
+          // the convention the core itself uses for text features.
+          min: 0,
+          max: 0,
           read_only: true,
           has_feedback: false,
           // Text states are kept as the feature's last value only (Gladys

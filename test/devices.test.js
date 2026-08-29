@@ -79,6 +79,30 @@ test('manifest action keys are unique across blueprints', () => {
   assert.equal(new Set(keys).size, keys.length, 'no two blueprints may register the same action');
 });
 
+test('every published feature carries the fields Gladys stores as NOT NULL', () => {
+  // min/max are NOT NULL columns of t_device_feature, whatever the category:
+  // omitting them on a single feature makes Gladys reject the WHOLE device
+  // with a 422, and the Discovery screen shows "appareil incomplete".
+  for (const device of buildDiscoveredDevices(gladys, jukeboxConfig)) {
+    for (const feature of device.features) {
+      assert.equal(typeof feature.name, 'string', `${feature.external_id} needs a name`);
+      assert.equal(typeof feature.min, 'number', `${feature.external_id} needs a min`);
+      assert.equal(typeof feature.max, 'number', `${feature.external_id} needs a max`);
+      assert.equal(typeof feature.read_only, 'boolean', `${feature.external_id} needs read_only`);
+      assert.equal(
+        typeof feature.has_feedback,
+        'boolean',
+        `${feature.external_id} needs has_feedback`,
+      );
+      assert.equal(
+        typeof feature.keep_history,
+        'boolean',
+        `${feature.external_id} needs keep_history`,
+      );
+    }
+  }
+});
+
 test('every polled device opts into polling explicitly', () => {
   // Gladys registers a device in its poll manager only when should_poll is
   // true (should_poll defaults to false in DB): a device carrying onPoll but
