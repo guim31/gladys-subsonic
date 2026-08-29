@@ -19,7 +19,14 @@ import {
   DEVICE_FEATURE_CATEGORIES,
   DEVICE_FEATURE_TYPES,
 } from '@gladysassistant/integration-sdk';
-import { ping, getNowPlaying, getArtists, startScan, getScanStatus } from '../subsonic.js';
+import {
+  ping,
+  getNowPlaying,
+  getArtists,
+  startScan,
+  getScanStatus,
+  getCoverArt,
+} from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
 
 const DEVICE_TYPE = 'server';
@@ -29,10 +36,19 @@ const logger = createLogger({ name: DEVICE_TYPE });
 const FEATURE = {
   ACTIVE_STREAMS: 'active-streams',
   NOW_PLAYING: 'now-playing',
+  COVER_ART: 'cover-art',
   SONG_COUNT: 'song-count',
   ARTIST_COUNT: 'artist-count',
   ALBUM_COUNT: 'album-count',
 };
+
+// Gladys refuses an image whose `<mime>;base64,...` string exceeds 150 KB.
+const MAX_IMAGE_SIZE = 150 * 1024;
+
+// Sizes asked to the server, largest first: the first one that fits wins.
+// A 500 px JPEG cover is usually well under the limit; the smaller steps are
+// there for servers that re-encode poorly or ignore the size parameter.
+const COVER_ART_SIZES = [500, 300, 160];
 
 // Re-read the artist list at most once an hour even when the library looks
 // unchanged: cheap insurance against a server that does not move its scan
@@ -44,9 +60,69 @@ const LIBRARY_REFRESH_MS = 60 * 60 * 1000;
 // cached entry carries its platform id so switching server invalidates it.
 let libraryCache = null;
 
-/** Drop the cached library counts (used by the tests). */
+// Cover art last sent to Gladys: publishing it again on every poll would
+// burn the image rate limit (12/minute per device) for nothing, so the id is
+// kept to detect a real track change. The image itself is kept so the
+// on-demand path can answer even when nothing is playing any more.
+let coverArtCache = null;
+
+/** Drop the cached library counts and cover art (used by the tests). */
 export function resetLibraryCache() {
   libraryCache = null;
+  coverArtCache = null;
+}
+
+/**
+ * Download a cover art small enough for the Gladys image channel.
+ * @param {object} config
+ * @param {string} coverArtId
+ * @returns {Promise<string|null>} `image/jpeg;base64,...`, or null if even
+ *   the smallest size the server returns is too big
+ */
+async function fetchCoverArt(config, coverArtId) {
+  let smallest = null;
+  for (const size of COVER_ART_SIZES) {
+    const image = await getCoverArt(config, coverArtId, size);
+    smallest = image;
+    if (image.length <= MAX_IMAGE_SIZE) {
+      return image;
+    }
+    logger.debug(`Cover art at ${size}px is ${image.length} bytes, trying smaller`);
+  }
+  logger.warn(`Cover art ${coverArtId} stays above ${MAX_IMAGE_SIZE} bytes, skipped`);
+  return smallest !== null && smallest.length <= MAX_IMAGE_SIZE ? smallest : null;
+}
+
+/**
+ * Publish the cover art of the track being played, when it changed.
+ * Failures are logged and swallowed: a missing cover must never break the
+ * poll that carries the sensors.
+ * @param {object} gladys
+ * @param {object} config
+ * @param {object|undefined} entry the now playing entry to illustrate
+ */
+async function publishCoverArt(gladys, config, entry) {
+  const coverArtId = entry?.coverArt;
+  const platformId = serverPlatformId(config);
+  if (!coverArtId) {
+    return;
+  }
+  if (coverArtCache?.platformId === platformId && coverArtCache.coverArtId === coverArtId) {
+    return;
+  }
+
+  try {
+    const image = await fetchCoverArt(config, coverArtId);
+    if (image === null) {
+      return;
+    }
+    const deviceExternalId = gladys.externalIds(DEVICE_TYPE, platformId).device;
+    await gladys.publishCameraImage(deviceExternalId, image);
+    coverArtCache = { platformId, coverArtId, image };
+    logger.info(`Cover art published for ${entry.album ?? coverArtId}`);
+  } catch (err) {
+    logger.warn(`Cover art unavailable (${err.message})`);
+  }
 }
 
 /**
@@ -181,6 +257,18 @@ export const server = {
           // a scene can react to the played track changing.
           keep_history: false,
         },
+        {
+          name: 'Album cover',
+          external_id: ids.feature(FEATURE.COVER_ART),
+          category: DEVICE_FEATURE_CATEGORIES.CAMERA,
+          type: DEVICE_FEATURE_TYPES.CAMERA.IMAGE,
+          min: 0,
+          max: 0,
+          read_only: true,
+          has_feedback: false,
+          // Images travel on their own channel, never through the history.
+          keep_history: false,
+        },
         counter('Songs in library', FEATURE.SONG_COUNT, 10000000),
         counter('Artists in library', FEATURE.ARTIST_COUNT, 1000000),
         counter('Albums in library', FEATURE.ALBUM_COUNT, 10000000),
@@ -218,6 +306,28 @@ export const server = {
     }
 
     await gladys.publishStates(states);
+
+    // After the states: the cover art travels on its own channel, and a
+    // failure there must not cost us the sensors.
+    await publishCoverArt(gladys, config, nowPlaying[0]);
+  },
+
+  // Gladys asks for a FRESH image (dashboard live view, chat intent). Read
+  // what is playing right now rather than serving the cache blindly; the
+  // cache is the fallback when nothing is playing any more.
+  async onGetImage(gladys, { config }) {
+    const [entry] = await getNowPlaying(config);
+    if (entry?.coverArt) {
+      const image = await fetchCoverArt(config, entry.coverArt);
+      if (image !== null) {
+        coverArtCache = { platformId: serverPlatformId(config), coverArtId: entry.coverArt, image };
+        return image;
+      }
+    }
+    if (coverArtCache?.platformId === serverPlatformId(config)) {
+      return coverArtCache.image;
+    }
+    throw new Error('No cover art available: nothing is playing');
   },
 
   // Manifest actions owned by this device type (see the `actions` field of

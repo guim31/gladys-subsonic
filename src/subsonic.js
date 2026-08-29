@@ -211,6 +211,46 @@ export async function getRandomSongs(config, size = 20) {
 }
 
 /**
+ * Fetch a cover art and return it in the format the Gladys camera channel
+ * expects: `<mime>;base64,...`, which the dashboard renders as `data:<that>`.
+ *
+ * Unlike every other endpoint this one answers with BINARY image bytes — it
+ * only falls back to the JSON envelope to report an error, so the content
+ * type decides how to read the answer.
+ *
+ * @param {object} config normalized config
+ * @param {string} id cover art id (the `coverArt` of a song/album entry)
+ * @param {number} [size] square size in pixels asked to the server
+ * @returns {Promise<string>} `image/jpeg;base64,...`
+ */
+export async function getCoverArt(config, id, size) {
+  const url = buildUrl(config, 'getCoverArt', { id, size });
+  logger.debug(`-> getCoverArt ${id}${size ? ` (${size}px)` : ''}`);
+
+  let response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  } catch (err) {
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(`getCoverArt request failed: ${redactAuth(causeMessage(err))}`);
+  }
+  if (!response.ok) {
+    throw new Error(`Subsonic HTTP ${response.status} on getCoverArt`);
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('json')) {
+    // The server refused: the error travels in the usual envelope.
+    const envelope = (await response.json())['subsonic-response'] ?? {};
+    throw new SubsonicError(envelope.error?.code ?? 0, envelope.error?.message);
+  }
+
+  const mime = contentType.split(';')[0].trim();
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return `${mime.startsWith('image/') ? mime : 'image/jpeg'};base64,${buffer.toString('base64')}`;
+}
+
+/**
  * Control the server-side jukebox (playback on the machine hosting the
  * server; must be enabled server-side, e.g. `Jukebox.Enabled` in Navidrome).
  * @param {object} config

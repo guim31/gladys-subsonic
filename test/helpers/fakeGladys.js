@@ -12,10 +12,16 @@
 export function createFakeGladys() {
   const published = [];
   const connectionStatuses = [];
+  const cameraImages = [];
 
   return {
     published,
     connectionStatuses,
+    cameraImages,
+
+    async publishCameraImage(deviceExternalId, image) {
+      cameraImages.push({ deviceExternalId, image });
+    },
 
     externalIds(type, platformId) {
       const device = `${type}:${platformId}`;
@@ -68,8 +74,19 @@ export function mockSubsonicFetch(routes) {
       throw new Error(`Unexpected Subsonic call: ${endpoint}`);
     }
     const body = typeof route === 'function' ? route(new URL(String(url))) : route;
+    // A route can answer with raw image bytes instead of the JSON envelope
+    // (getCoverArt): `{ __image: <Buffer|string>, __mime: 'image/jpeg' }`.
+    if (body && body.__image !== undefined) {
+      const bytes = Buffer.from(body.__image);
+      return {
+        ok: true,
+        headers: { get: (name) => (name.toLowerCase() === 'content-type' ? body.__mime : null) },
+        arrayBuffer: async () => bytes,
+      };
+    }
     return {
       ok: true,
+      headers: { get: () => 'application/json' },
       json: async () => ({
         'subsonic-response': { status: 'ok', version: '1.16.1', ...body },
       }),

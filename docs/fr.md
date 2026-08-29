@@ -16,6 +16,10 @@ Subsonic… Elle a été pensée et testée d'abord pour **Navidrome**.
   - **Lectures en cours** : nombre de morceaux en train d'être écoutés
     (pratique pour une scène « ne pas couper le son si quelqu'un écoute de la
     musique ») ;
+  - **Pochette de l'album** : l'image de l'album en cours d'écoute. Elle
+    passe par le canal image de Gladys, donc elle s'affiche avec le widget
+    **Caméra** du tableau de bord (choisissez l'appareil « Subsonic
+    server ») ;
   - **Morceaux**, **Artistes** et **Albums** de la bibliothèque.
 - Un appareil **Jukebox Subsonic** (optionnel) pour piloter la lecture _côté
   serveur_ : lecture/pause, précédent/suivant, volume et état de lecture.

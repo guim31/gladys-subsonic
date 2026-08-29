@@ -46,6 +46,18 @@ gladys.onSetValue(async (device, feature, value) => {
   await blueprint.onSetValue(gladys, { device, feature, value, config });
 });
 
+// --- Camera channel: Gladys needs a FRESH image of a device ------------------
+// Triggered by the dashboard live view or a chat intent. The resolved
+// `<mime>;base64,...` string (≤ 150 KB) is acked back to Gladys.
+gladys.onGetImage(async (device) => {
+  logger.info(`onGetImage <- ${device.external_id}`);
+  const blueprint = findBlueprintByDevice(gladys, device, config);
+  if (!blueprint || typeof blueprint.onGetImage !== 'function') {
+    throw new Error(`No image handler for ${device.external_id}`);
+  }
+  return blueprint.onGetImage(gladys, { device, config });
+});
+
 // --- Polling: Gladys asks to refresh a device --------------------------------
 gladys.onPoll(async (device) => {
   const blueprint = findBlueprintByDevice(gladys, device, config);

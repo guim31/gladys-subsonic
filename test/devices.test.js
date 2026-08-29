@@ -157,7 +157,10 @@ test('formatNowPlaying summarizes the streams in one line', () => {
 
 // Routes of a small library, reused by the polling tests below.
 const LIBRARY_ROUTES = {
-  getNowPlaying: { nowPlaying: { entry: [{ artist: 'Air', title: 'Sexy Boy' }, { id: 'b' }] } },
+  getNowPlaying: {
+    nowPlaying: { entry: [{ artist: 'Air', title: 'Sexy Boy', coverArt: 'al-1' }, { id: 'b' }] },
+  },
+  getCoverArt: { __image: 'fake-jpeg-bytes', __mime: 'image/jpeg' },
   getScanStatus: { scanStatus: { scanning: false, count: 4242 } },
   getArtists: {
     artists: {
@@ -187,6 +190,69 @@ test('server onPoll publishes streams, now playing and the library counts', asyn
   assert.equal(byFeature['server:music-example-com:song-count'], 4242);
   assert.equal(byFeature['server:music-example-com:artist-count'], 2);
   assert.equal(byFeature['server:music-example-com:album-count'], 5);
+});
+
+test('the cover art is published on the image channel, once per track', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  let coverArt = 'al-1';
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    getNowPlaying: () => ({
+      nowPlaying: { entry: [{ artist: 'Air', title: 'Sexy Boy', coverArt }] },
+    }),
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+    await server.onPoll(fake, baseConfig); // same track: nothing new to send
+    coverArt = 'al-2'; // track changed
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+
+  assert.equal(fake.cameraImages.length, 2, 'one image per distinct cover, not per poll');
+  assert.equal(fake.cameraImages[0].deviceExternalId, 'server:music-example-com');
+  // The dashboard renders the string as `data:<image>`, so it must carry its
+  // own mime type and stay under the 150 KB the core accepts.
+  assert.match(fake.cameraImages[0].image, /^image\/jpeg;base64,/);
+  assert.ok(fake.cameraImages[0].image.length <= 150 * 1024);
+  assert.deepEqual(
+    mock.calls.filter((c) => c.endpoint === 'getCoverArt').map((c) => c.url.searchParams.get('id')),
+    ['al-1', 'al-2'],
+  );
+});
+
+test('a cover art that cannot be fetched never breaks the poll', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    getCoverArt: { status: 'failed', error: { code: 70, message: 'not found' } },
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  assert.equal(fake.cameraImages.length, 0);
+  // The sensors of the same poll went through regardless.
+  assert.ok(
+    fake.published.some((p) => p.featureExternalId === 'server:music-example-com:now-playing'),
+  );
+});
+
+test('onGetImage answers with the cover of what is playing right now', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch(LIBRARY_ROUTES);
+  let image;
+  try {
+    image = await server.onGetImage(fake, { device: {}, config: baseConfig });
+  } finally {
+    mock.restore();
+  }
+  assert.match(image, /^image\/jpeg;base64,/);
 });
 
 test('the heavy artist list is fetched once while the library is unchanged', async () => {
