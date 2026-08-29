@@ -7,7 +7,12 @@ import {
   buildDiscoveredDevices,
   findBlueprintByDevice,
 } from '../src/devices/index.js';
-import { server, serverPlatformId } from '../src/devices/server.js';
+import {
+  server,
+  serverPlatformId,
+  formatNowPlaying,
+  resetLibraryCache,
+} from '../src/devices/server.js';
 import { jukebox } from '../src/devices/jukebox.js';
 import { normalizeConfig } from '../src/config.js';
 import { createFakeGladys, mockSubsonicFetch } from './helpers/fakeGladys.js';
@@ -88,41 +93,142 @@ test('every polled device opts into polling explicitly', () => {
   }
 });
 
-test('the server device carries the three read-only counter sensors', () => {
+test('the server device carries read-only counters plus the now-playing text', () => {
   const device = server.buildDevice(gladys, baseConfig);
   // 60 s in config -> 60000 ms, one of the values Gladys accepts.
   assert.equal(device.poll_frequency, 60000);
-  assert.equal(device.features.length, 3);
-  for (const feature of device.features) {
-    assert.equal(feature.category, DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR);
+
+  const counters = device.features.filter(
+    (f) => f.category === DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
+  );
+  assert.equal(counters.length, 4, 'streams, songs, artists and albums');
+  for (const feature of counters) {
     assert.equal(feature.type, DEVICE_FEATURE_TYPES.SENSOR.INTEGER);
     assert.equal(feature.read_only, true);
   }
+
+  const text = device.features.find((f) => f.category === DEVICE_FEATURE_CATEGORIES.TEXT);
+  assert.equal(text.type, DEVICE_FEATURE_TYPES.TEXT.TEXT);
+  assert.equal(text.read_only, true);
+  // Gladys keeps no history for text states, only the feature's last value.
+  assert.equal(text.keep_history, false);
 });
 
-test('server onPoll publishes streams, artists and albums from the API', async () => {
+test('formatNowPlaying summarizes the streams in one line', () => {
+  assert.equal(formatNowPlaying([]), 'Nothing playing');
+  assert.equal(
+    formatNowPlaying([{ artist: 'Radiohead', title: 'Karma Police', username: 'guilhem' }]),
+    'Radiohead — Karma Police (guilhem)',
+  );
+  assert.equal(
+    formatNowPlaying([
+      { artist: 'Radiohead', title: 'Karma Police' },
+      { artist: 'Air', title: 'Sexy Boy' },
+    ]),
+    'Radiohead — Karma Police +1 more',
+  );
+  // A stream missing its tags must not render "undefined".
+  assert.equal(formatNowPlaying([{ username: 'guilhem' }]), 'Unknown track (guilhem)');
+});
+
+// Routes of a small library, reused by the polling tests below.
+const LIBRARY_ROUTES = {
+  getNowPlaying: { nowPlaying: { entry: [{ artist: 'Air', title: 'Sexy Boy' }, { id: 'b' }] } },
+  getScanStatus: { scanStatus: { scanning: false, count: 4242 } },
+  getArtists: {
+    artists: {
+      index: [
+        { name: 'A', artist: [{ id: '1', albumCount: 3 }] },
+        // Single child returned as an object, not an array (XML heritage).
+        { name: 'B', artist: { id: '2', albumCount: 2 } },
+      ],
+    },
+  },
+};
+
+test('server onPoll publishes streams, now playing and the library counts', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch(LIBRARY_ROUTES);
+  try {
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  const byFeature = Object.fromEntries(
+    fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
+  );
+  assert.equal(byFeature['server:music-example-com:active-streams'], 2);
+  assert.equal(byFeature['server:music-example-com:now-playing'], 'Air — Sexy Boy +1 more');
+  assert.equal(byFeature['server:music-example-com:song-count'], 4242);
+  assert.equal(byFeature['server:music-example-com:artist-count'], 2);
+  assert.equal(byFeature['server:music-example-com:album-count'], 5);
+});
+
+test('the heavy artist list is fetched once while the library is unchanged', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch(LIBRARY_ROUTES);
+  try {
+    await server.onPoll(fake, baseConfig);
+    await server.onPoll(fake, baseConfig);
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  const calls = mock.calls.filter((c) => c.endpoint === 'getArtists');
+  assert.equal(calls.length, 1, 'getArtists must be served from the cache after the first poll');
+  // ...and the counts are still published on every poll, so the dashboard
+  // never goes stale.
+  const albums = fake.published.filter(
+    (p) => p.featureExternalId === 'server:music-example-com:album-count',
+  );
+  assert.equal(albums.length, 3);
+  assert.deepEqual(
+    albums.map((p) => p.state),
+    [5, 5, 5],
+  );
+});
+
+test('a changed scan signature re-reads the artist list', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  let songCount = 4242;
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    getScanStatus: () => ({ scanStatus: { scanning: false, count: songCount } }),
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+    songCount = 4300; // a scan added files: the counts may have moved
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  assert.equal(mock.calls.filter((c) => c.endpoint === 'getArtists').length, 2);
+});
+
+test('a server refusing getScanStatus still publishes what it can', async () => {
+  resetLibraryCache();
   const fake = createFakeGladys();
   const mock = mockSubsonicFetch({
-    getNowPlaying: { nowPlaying: { entry: [{ id: 'a' }, { id: 'b' }] } },
-    getArtists: {
-      artists: {
-        index: [
-          { name: 'A', artist: [{ id: '1', albumCount: 3 }] },
-          // Single child returned as an object, not an array (XML heritage).
-          { name: 'B', artist: { id: '2', albumCount: 2 } },
-        ],
-      },
-    },
+    ...LIBRARY_ROUTES,
+    getScanStatus: { status: 'failed', error: { code: 50, message: 'not authorized' } },
   });
   try {
     await server.onPoll(fake, baseConfig);
   } finally {
     mock.restore();
   }
-  const byFeature = Object.fromEntries(fake.published.map((p) => [p.featureExternalId, p.state]));
-  assert.equal(byFeature['server:music-example-com:active-streams'], 2);
-  assert.equal(byFeature['server:music-example-com:artist-count'], 2);
-  assert.equal(byFeature['server:music-example-com:album-count'], 5);
+  const ids = fake.published.map((p) => p.featureExternalId);
+  assert.ok(
+    ids.includes('server:music-example-com:artist-count'),
+    'library counts still published',
+  );
+  assert.ok(
+    !ids.includes('server:music-example-com:song-count'),
+    'an unmeasured song count must not be published as 0',
+  );
 });
 
 test('the jukebox music features cover commands, volume and playback state', () => {

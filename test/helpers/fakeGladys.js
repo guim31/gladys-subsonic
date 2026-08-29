@@ -31,7 +31,16 @@ export function createFakeGladys() {
 
     async publishStates(states) {
       for (const s of states) {
-        published.push({ featureExternalId: s.device_feature_external_id, state: s.state });
+        // A state carries either a numeric `state` or a string `text`: keep
+        // only the one that is set, so assertions stay on the real shape.
+        const entry = { featureExternalId: s.device_feature_external_id };
+        if (s.state !== undefined) {
+          entry.state = s.state;
+        }
+        if (s.text !== undefined) {
+          entry.text = s.text;
+        }
+        published.push(entry);
       }
     },
 

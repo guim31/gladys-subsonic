@@ -2,8 +2,16 @@
 // Device type: SUBSONIC SERVER
 // Read-only sensors about the music server, refreshed by polling:
 //   - active streams (how many songs are being played right now);
-//   - artists and albums counted in the library.
+//   - now playing (free text: artist — title, and who is listening);
+//   - songs, artists and albums counted in the library.
 // Also owns the `test_connection` and `start_scan` configuration actions.
+//
+// Polling budget: getNowPlaying and getScanStatus are small answers, polled
+// every time. getArtists is NOT: it returns the whole artist list, which is
+// heavy on a large library, and its counts only move when the library is
+// re-scanned. It is therefore fetched only when the scan signature reported
+// by getScanStatus changes (or once an hour as a safety net) and served from
+// a cache in between — the published values stay fresh every poll either way.
 // -----------------------------------------------------------------------------
 
 import {
@@ -20,9 +28,26 @@ const logger = createLogger({ name: DEVICE_TYPE });
 
 const FEATURE = {
   ACTIVE_STREAMS: 'active-streams',
+  NOW_PLAYING: 'now-playing',
+  SONG_COUNT: 'song-count',
   ARTIST_COUNT: 'artist-count',
   ALBUM_COUNT: 'album-count',
 };
+
+// Re-read the artist list at most once an hour even when the library looks
+// unchanged: cheap insurance against a server that does not move its scan
+// signature (or does not answer getScanStatus at all).
+const LIBRARY_REFRESH_MS = 60 * 60 * 1000;
+
+// Last known library counts, and what the library looked like when they were
+// read. Module-level: the integration talks to one server at a time, and the
+// cached entry carries its platform id so switching server invalidates it.
+let libraryCache = null;
+
+/** Drop the cached library counts (used by the tests). */
+export function resetLibraryCache() {
+  libraryCache = null;
+}
 
 /**
  * External ids must be unique and stable: derive the platform id from the
@@ -40,6 +65,74 @@ export function serverPlatformId(config) {
   }
 }
 
+/**
+ * One-line summary of what the server is streaming right now, published as
+ * the free text of the `now playing` feature.
+ * @param {Array<object>} entries getNowPlaying entries
+ * @returns {string}
+ */
+export function formatNowPlaying(entries) {
+  if (entries.length === 0) {
+    return 'Nothing playing';
+  }
+  const [first, ...others] = entries;
+  const track = [first.artist, first.title].filter(Boolean).join(' — ') || 'Unknown track';
+  const listener = first.username ? ` (${first.username})` : '';
+  const more = others.length > 0 ? ` +${others.length} more` : '';
+  return `${track}${listener}${more}`;
+}
+
+/**
+ * Scan status, or null when the server refuses the endpoint (some servers
+ * reserve it to admins): a missing scan status degrades the library refresh
+ * to its hourly safety net instead of failing the whole poll.
+ * @param {object} config
+ * @returns {Promise<object|null>}
+ */
+async function readScanStatus(config) {
+  try {
+    return await getScanStatus(config);
+  } catch (err) {
+    logger.warn(`getScanStatus unavailable (${err.message}), falling back to timed refresh`);
+    return null;
+  }
+}
+
+/**
+ * Library counts, from the cache when the library has not changed.
+ * @param {object} config
+ * @param {object|null} scanStatus answer of getScanStatus for this poll
+ * @returns {Promise<{ artistCount: number, albumCount: number }>}
+ */
+async function readLibraryCounts(config, scanStatus) {
+  const platformId = serverPlatformId(config);
+  // `count` moves with every added file, `lastScan` with every scan: either
+  // changing means the artist/album counts may have moved too.
+  const signature = `${scanStatus?.count ?? ''}|${scanStatus?.lastScan ?? ''}`;
+  const usable =
+    libraryCache !== null &&
+    libraryCache.platformId === platformId &&
+    libraryCache.signature === signature &&
+    Date.now() - libraryCache.fetchedAt < LIBRARY_REFRESH_MS;
+
+  if (usable) {
+    return libraryCache;
+  }
+
+  const artists = await getArtists(config);
+  libraryCache = {
+    platformId,
+    signature,
+    fetchedAt: Date.now(),
+    artistCount: artists.length,
+    albumCount: artists.reduce((total, artist) => total + (artist.albumCount ?? 0), 0),
+  };
+  logger.info(
+    `Library read: ${libraryCache.artistCount} artist(s), ${libraryCache.albumCount} album(s)`,
+  );
+  return libraryCache;
+}
+
 export const server = {
   key: DEVICE_TYPE,
 
@@ -49,6 +142,17 @@ export const server = {
 
   buildDevice(gladys, config) {
     const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
+    const counter = (name, key, max) => ({
+      name,
+      external_id: ids.feature(key),
+      category: DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
+      type: DEVICE_FEATURE_TYPES.SENSOR.INTEGER,
+      min: 0,
+      max,
+      read_only: true,
+      has_feedback: false,
+      keep_history: true,
+    });
     return {
       name: 'Subsonic server',
       external_id: ids.device,
@@ -59,39 +163,22 @@ export const server = {
       should_poll: true,
       poll_frequency: pollFrequencyMs(config),
       features: [
+        counter('Active streams', FEATURE.ACTIVE_STREAMS, 1000),
         {
-          name: 'Active streams',
-          external_id: ids.feature(FEATURE.ACTIVE_STREAMS),
-          category: DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
-          type: DEVICE_FEATURE_TYPES.SENSOR.INTEGER,
-          min: 0,
-          max: 1000,
+          name: 'Now playing',
+          external_id: ids.feature(FEATURE.NOW_PLAYING),
+          category: DEVICE_FEATURE_CATEGORIES.TEXT,
+          type: DEVICE_FEATURE_TYPES.TEXT.TEXT,
           read_only: true,
           has_feedback: false,
-          keep_history: true,
+          // Text states are kept as the feature's last value only (Gladys
+          // stores no history for them), but they DO fire the trigger check:
+          // a scene can react to the played track changing.
+          keep_history: false,
         },
-        {
-          name: 'Artists in library',
-          external_id: ids.feature(FEATURE.ARTIST_COUNT),
-          category: DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
-          type: DEVICE_FEATURE_TYPES.SENSOR.INTEGER,
-          min: 0,
-          max: 1000000,
-          read_only: true,
-          has_feedback: false,
-          keep_history: true,
-        },
-        {
-          name: 'Albums in library',
-          external_id: ids.feature(FEATURE.ALBUM_COUNT),
-          category: DEVICE_FEATURE_CATEGORIES.COUNTER_SENSOR,
-          type: DEVICE_FEATURE_TYPES.SENSOR.INTEGER,
-          min: 0,
-          max: 10000000,
-          read_only: true,
-          has_feedback: false,
-          keep_history: true,
-        },
+        counter('Songs in library', FEATURE.SONG_COUNT, 10000000),
+        counter('Artists in library', FEATURE.ARTIST_COUNT, 1000000),
+        counter('Albums in library', FEATURE.ALBUM_COUNT, 10000000),
       ],
     };
   },
@@ -100,19 +187,32 @@ export const server = {
     const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
     logger.debug('Polling the Subsonic server...');
 
-    const [nowPlaying, artists] = await Promise.all([getNowPlaying(config), getArtists(config)]);
-    const albumCount = artists.reduce((total, artist) => total + (artist.albumCount ?? 0), 0);
-
-    logger.info(
-      `Server polled: ${nowPlaying.length} active stream(s), ` +
-        `${artists.length} artist(s), ${albumCount} album(s)`,
-    );
-
-    await gladys.publishStates([
-      { device_feature_external_id: ids.feature(FEATURE.ACTIVE_STREAMS), state: nowPlaying.length },
-      { device_feature_external_id: ids.feature(FEATURE.ARTIST_COUNT), state: artists.length },
-      { device_feature_external_id: ids.feature(FEATURE.ALBUM_COUNT), state: albumCount },
+    const [nowPlaying, scanStatus] = await Promise.all([
+      getNowPlaying(config),
+      readScanStatus(config),
     ]);
+    const library = await readLibraryCounts(config, scanStatus);
+    const nowPlayingText = formatNowPlaying(nowPlaying);
+
+    logger.info(`Server polled: ${nowPlaying.length} active stream(s) — ${nowPlayingText}`);
+
+    const states = [
+      { device_feature_external_id: ids.feature(FEATURE.ACTIVE_STREAMS), state: nowPlaying.length },
+      { device_feature_external_id: ids.feature(FEATURE.NOW_PLAYING), text: nowPlayingText },
+      { device_feature_external_id: ids.feature(FEATURE.ARTIST_COUNT), state: library.artistCount },
+      { device_feature_external_id: ids.feature(FEATURE.ALBUM_COUNT), state: library.albumCount },
+    ];
+    // Only servers reporting a song count get that sensor: publishing a 0 we
+    // did not measure would be a lie on the dashboard and in the history.
+    const songCount = Number(scanStatus?.count);
+    if (Number.isFinite(songCount)) {
+      states.push({
+        device_feature_external_id: ids.feature(FEATURE.SONG_COUNT),
+        state: songCount,
+      });
+    }
+
+    await gladys.publishStates(states);
   },
 
   // Manifest actions owned by this device type (see the `actions` field of

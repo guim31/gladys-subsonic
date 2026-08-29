@@ -13,7 +13,7 @@ et du SDK [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistan
 
 | Appareil             | Fonctionnalités                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------- |
-| **Serveur Subsonic** | Capteurs : lectures en cours, artistes et albums de la bibliothèque (rafraîchis par polling) |
+| **Serveur Subsonic** | Capteurs : en écoute (texte), lectures en cours, morceaux/artistes/albums de la bibliothèque |
 | **Jukebox Subsonic** | Lecture/pause, précédent/suivant, volume, état de lecture — via `jukeboxControl` (optionnel) |
 
 Boutons de l'écran de configuration :

@@ -7,12 +7,16 @@ Subsonic… Elle a été pensée et testée d'abord pour **Navidrome**.
 
 ## Ce que vous obtenez
 
-- Un appareil **Serveur Subsonic** avec trois capteurs rafraîchis
+- Un appareil **Serveur Subsonic** avec cinq capteurs rafraîchis
   périodiquement, utilisables dans vos scènes et sur votre tableau de bord :
+  - **En écoute** : le morceau joué en ce moment, au format
+    `Artiste — Titre (auditeur)`. Gladys déclenche ses scènes sur le
+    changement de cette valeur : vous pouvez donc réagir à chaque nouveau
+    morceau ;
   - **Lectures en cours** : nombre de morceaux en train d'être écoutés
     (pratique pour une scène « ne pas couper le son si quelqu'un écoute de la
     musique ») ;
-  - **Artistes** et **Albums** de la bibliothèque.
+  - **Morceaux**, **Artistes** et **Albums** de la bibliothèque.
 - Un appareil **Jukebox Subsonic** (optionnel) pour piloter la lecture _côté
   serveur_ : lecture/pause, précédent/suivant, volume et état de lecture.
 - Des boutons dans l'écran de configuration : tester la connexion, lancer un

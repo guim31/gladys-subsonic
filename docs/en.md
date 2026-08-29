@@ -7,11 +7,14 @@ Subsonic… It was designed and tested first against **Navidrome**.
 
 ## What you get
 
-- A **Subsonic server** device with three periodically refreshed sensors,
+- A **Subsonic server** device with five periodically refreshed sensors,
   usable in your scenes and on your dashboard:
+  - **Now playing**: the track being played right now, as
+    `Artist — Title (listener)`. Gladys fires its scene triggers when this
+    value changes, so you can react to every new track;
   - **Active streams**: how many songs are being played right now (handy for
     a "don't cut the sound while someone is listening" scene);
-  - **Artists** and **Albums** counted in the library.
+  - **Songs**, **Artists** and **Albums** counted in the library.
 - An optional **Subsonic jukebox** device to control _server-side_ playback:
   play/pause, previous/next, volume and playback state.
 - Buttons in the Configuration screen: test the connection, start a library
