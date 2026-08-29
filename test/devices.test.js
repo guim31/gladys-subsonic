@@ -223,6 +223,76 @@ test('the cover art is published on the image channel, once per track', async ()
   );
 });
 
+test('a placeholder cover is published when nothing has ever been played', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    getNowPlaying: {}, // nobody is listening
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  // Without this the camera feature holds no value at all and the widget
+  // renders a broken image.
+  assert.equal(fake.cameraImages.length, 1);
+  assert.match(fake.cameraImages[0].image, /^image\/svg\+xml;base64,/);
+  assert.equal(
+    mock.calls.filter((c) => c.endpoint === 'getCoverArt').length,
+    0,
+    'the placeholder costs no request to the server',
+  );
+});
+
+test('the last cover stays on screen when playback stops', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  let playing = true;
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    getNowPlaying: () =>
+      playing ? { nowPlaying: { entry: [{ title: 'Sexy Boy', coverArt: 'al-1' }] } } : {},
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+    playing = false;
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  // One real cover, and no placeholder replacing it: the widget keeps
+  // showing what was played last.
+  assert.equal(fake.cameraImages.length, 1);
+  assert.match(fake.cameraImages[0].image, /^image\/jpeg;base64,/);
+});
+
+test('the current image is re-sent before Gladys expires it', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch(LIBRARY_ROUTES);
+  const realNow = Date.now;
+  try {
+    await server.onPoll(fake, baseConfig);
+    assert.equal(fake.cameraImages.length, 1);
+    // Same track 15 minutes later: Gladys drops a camera image after an
+    // hour, so the same bytes must be re-sent rather than left to expire.
+    Date.now = () => realNow() + 15 * 60 * 1000;
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    Date.now = realNow;
+    mock.restore();
+  }
+  assert.equal(fake.cameraImages.length, 2, 'the image is refreshed on its own');
+  assert.equal(fake.cameraImages[0].image, fake.cameraImages[1].image);
+  assert.equal(
+    mock.calls.filter((c) => c.endpoint === 'getCoverArt').length,
+    1,
+    're-sending must not re-download the cover',
+  );
+});
+
 test('a cover art that cannot be fetched never breaks the poll', async () => {
   resetLibraryCache();
   const fake = createFakeGladys();
@@ -235,7 +305,10 @@ test('a cover art that cannot be fetched never breaks the poll', async () => {
   } finally {
     mock.restore();
   }
-  assert.equal(fake.cameraImages.length, 0);
+  // An album with no artwork must not leave the widget with a broken image:
+  // the placeholder takes over when there is nothing else on screen.
+  assert.equal(fake.cameraImages.length, 1);
+  assert.match(fake.cameraImages[0].image, /^image\/svg\+xml;base64,/);
   // The sensors of the same poll went through regardless.
   assert.ok(
     fake.published.some((p) => p.featureExternalId === 'server:music-example-com:now-playing'),

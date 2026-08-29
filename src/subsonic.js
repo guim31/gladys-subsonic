@@ -246,8 +246,13 @@ export async function getCoverArt(config, id, size) {
   }
 
   const mime = contentType.split(';')[0].trim();
+  if (!mime.startsWith('image/')) {
+    // Anything else (an HTML error page from a reverse proxy, an empty
+    // body...) would be published as a broken image: refuse it here.
+    throw new Error(`getCoverArt answered ${mime || 'no content type'}, not an image`);
+  }
   const buffer = Buffer.from(await response.arrayBuffer());
-  return `${mime.startsWith('image/') ? mime : 'image/jpeg'};base64,${buffer.toString('base64')}`;
+  return `${mime};base64,${buffer.toString('base64')}`;
 }
 
 /**

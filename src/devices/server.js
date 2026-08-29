@@ -50,6 +50,37 @@ const MAX_IMAGE_SIZE = 150 * 1024;
 // there for servers that re-encode poorly or ignore the size parameter.
 const COVER_ART_SIZES = [500, 300, 160];
 
+// Gladys serves a camera image for one hour and then reports it as too old
+// (CAMERA_IMAGE_EXPIRATION_TIME_IN_HOURS), so a widget opened after a quiet
+// evening would find nothing to show. Re-send the current image well within
+// that window: the bytes are cached, this costs no request to the server.
+const COVER_REPUBLISH_MS = 10 * 60 * 1000;
+
+// Shown while nothing is playing on a server we have never seen play
+// anything — without it the widget has no image at all to render. Kept as
+// readable SVG (a few hundred bytes, crisp at any size) rather than an
+// opaque bitmap blob.
+const IDLE_COVER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b3357"/>
+      <stop offset="1" stop-color="#241f38"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#g)"/>
+  <g fill="none" stroke="#6f6796" stroke-width="10" opacity="0.55">
+    <circle cx="240" cy="240" r="150"/>
+    <circle cx="240" cy="240" r="196"/>
+  </g>
+  <path fill="#c9c2e8" d="M292 130 L292 292 a44 34 0 1 1 -26 -31 L266 186 L196 206 L196 322 a44 34 0 1 1 -26 -31 L170 176 a14 14 0 0 1 11 -14 L281 116 a9 9 0 0 1 11 9 Z"/>
+</svg>`;
+
+const IDLE_COVER_IMAGE = `image/svg+xml;base64,${Buffer.from(IDLE_COVER_SVG).toString('base64')}`;
+
+// Pseudo cover id of the placeholder, so it flows through the same
+// "publish only what changed" path as a real cover.
+const IDLE_COVER_ID = '__idle__';
+
 // Re-read the artist list at most once an hour even when the library looks
 // unchanged: cheap insurance against a server that does not move its scan
 // signature (or does not answer getScanStatus at all).
@@ -102,26 +133,51 @@ async function fetchCoverArt(config, coverArtId) {
  * @param {object|undefined} entry the now playing entry to illustrate
  */
 async function publishCoverArt(gladys, config, entry) {
-  const coverArtId = entry?.coverArt;
   const platformId = serverPlatformId(config);
-  if (!coverArtId) {
-    return;
-  }
-  if (coverArtCache?.platformId === platformId && coverArtCache.coverArtId === coverArtId) {
+  const cache = coverArtCache?.platformId === platformId ? coverArtCache : null;
+  // What should be on screen right now: the cover of the track being played;
+  // when nothing plays, whatever was there before — and the placeholder on a
+  // server we have never seen play anything, so the widget is never empty.
+  let wantedId = entry?.coverArt ?? cache?.coverArtId ?? IDLE_COVER_ID;
+  const alreadyOnScreen = cache !== null && cache.coverArtId === wantedId;
+
+  if (alreadyOnScreen && Date.now() - cache.publishedAt < COVER_REPUBLISH_MS) {
     return;
   }
 
-  try {
-    const image = await fetchCoverArt(config, coverArtId);
-    if (image === null) {
+  let image = alreadyOnScreen ? cache.image : null;
+  if (image === null && wantedId !== IDLE_COVER_ID) {
+    try {
+      image = await fetchCoverArt(config, wantedId);
+    } catch (err) {
+      logger.warn(`Cover art unavailable (${err.message})`);
+      image = null;
+    }
+  }
+  if (image === null) {
+    // No usable cover for this track (none published, refused, or too big).
+    // Keep whatever is already on screen; only an empty widget gets the
+    // placeholder — it must never be left with nothing to render.
+    if (cache !== null) {
       return;
     }
+    wantedId = IDLE_COVER_ID;
+    image = IDLE_COVER_IMAGE;
+  }
+
+  try {
     const deviceExternalId = gladys.externalIds(DEVICE_TYPE, platformId).device;
     await gladys.publishCameraImage(deviceExternalId, image);
-    coverArtCache = { platformId, coverArtId, image };
-    logger.info(`Cover art published for ${entry.album ?? coverArtId}`);
+    coverArtCache = { platformId, coverArtId: wantedId, image, publishedAt: Date.now() };
+    if (!alreadyOnScreen) {
+      logger.info(
+        wantedId === IDLE_COVER_ID
+          ? 'Nothing playing: published the placeholder cover'
+          : `Cover art published for ${entry?.album ?? wantedId}`,
+      );
+    }
   } catch (err) {
-    logger.warn(`Cover art unavailable (${err.message})`);
+    logger.warn(`Cover art could not be published (${err.message})`);
   }
 }
 
@@ -316,18 +372,23 @@ export const server = {
   // what is playing right now rather than serving the cache blindly; the
   // cache is the fallback when nothing is playing any more.
   async onGetImage(gladys, { config }) {
+    const platformId = serverPlatformId(config);
     const [entry] = await getNowPlaying(config);
     if (entry?.coverArt) {
       const image = await fetchCoverArt(config, entry.coverArt);
       if (image !== null) {
-        coverArtCache = { platformId: serverPlatformId(config), coverArtId: entry.coverArt, image };
+        coverArtCache = {
+          platformId,
+          coverArtId: entry.coverArt,
+          image,
+          publishedAt: Date.now(),
+        };
         return image;
       }
     }
-    if (coverArtCache?.platformId === serverPlatformId(config)) {
-      return coverArtCache.image;
-    }
-    throw new Error('No cover art available: nothing is playing');
+    // Nothing playing: the last cover we showed, or the placeholder. Never
+    // throw — an unanswered request leaves a broken image in the widget.
+    return coverArtCache?.platformId === platformId ? coverArtCache.image : IDLE_COVER_IMAGE;
   },
 
   // Manifest actions owned by this device type (see the `actions` field of

@@ -19,7 +19,9 @@ Subsonic… Elle a été pensée et testée d'abord pour **Navidrome**.
   - **Pochette de l'album** : l'image de l'album en cours d'écoute. Elle
     passe par le canal image de Gladys, donc elle s'affiche avec le widget
     **Caméra** du tableau de bord (choisissez l'appareil « Subsonic
-    server ») ;
+    server »). Quand la lecture s'arrête, la dernière pochette reste
+    affichée ; tant que rien n'a jamais été écouté, une image d'attente
+    neutre prend sa place ;
   - **Morceaux**, **Artistes** et **Albums** de la bibliothèque.
 - Un appareil **Jukebox Subsonic** (optionnel) pour piloter la lecture _côté
   serveur_ : lecture/pause, précédent/suivant, volume et état de lecture.

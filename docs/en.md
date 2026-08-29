@@ -16,7 +16,9 @@ Subsonic… It was designed and tested first against **Navidrome**.
     a "don't cut the sound while someone is listening" scene);
   - **Album cover**: the artwork of the album being played. It travels on the
     Gladys image channel, so it shows up in the dashboard **Camera** widget
-    (pick the "Subsonic server" device);
+    (pick the "Subsonic server" device). When playback stops the last cover
+    stays on screen; until anything has ever been played, a neutral
+    placeholder takes its place;
   - **Songs**, **Artists** and **Albums** counted in the library.
 - An optional **Subsonic jukebox** device to control _server-side_ playback:
   play/pause, previous/next, volume and playback state.
