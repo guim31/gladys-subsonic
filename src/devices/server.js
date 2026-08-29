@@ -59,20 +59,22 @@ const COVER_REPUBLISH_MS = 10 * 60 * 1000;
 // Shown while nothing is playing on a server we have never seen play
 // anything — without it the widget has no image at all to render. Kept as
 // readable SVG (a few hundred bytes, crisp at any size) rather than an
-// opaque bitmap blob.
+// opaque bitmap blob, and toned to sit quietly in the light Gladys theme
+// instead of punching a dark square into the dashboard.
 const IDLE_COVER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3b3357"/>
-      <stop offset="1" stop-color="#241f38"/>
+      <stop offset="0" stop-color="#eaf1fb"/>
+      <stop offset="0.55" stop-color="#f2f0fa"/>
+      <stop offset="1" stop-color="#fbeee9"/>
     </linearGradient>
   </defs>
   <rect width="480" height="480" fill="url(#g)"/>
-  <g fill="none" stroke="#6f6796" stroke-width="10" opacity="0.55">
+  <g fill="none" stroke="#b9cbe8" stroke-width="8" opacity="0.5">
     <circle cx="240" cy="240" r="150"/>
     <circle cx="240" cy="240" r="196"/>
   </g>
-  <path fill="#c9c2e8" d="M292 130 L292 292 a44 34 0 1 1 -26 -31 L266 186 L196 206 L196 322 a44 34 0 1 1 -26 -31 L170 176 a14 14 0 0 1 11 -14 L281 116 a9 9 0 0 1 11 9 Z"/>
+  <path fill="#93aed6" d="M292 130 L292 292 a44 34 0 1 1 -26 -31 L266 186 L196 206 L196 322 a44 34 0 1 1 -26 -31 L170 176 a14 14 0 0 1 11 -14 L281 116 a9 9 0 0 1 11 9 Z"/>
 </svg>`;
 
 const IDLE_COVER_IMAGE = `image/svg+xml;base64,${Buffer.from(IDLE_COVER_SVG).toString('base64')}`;
