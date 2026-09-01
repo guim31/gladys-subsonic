@@ -26,6 +26,7 @@ import {
   startScan,
   getScanStatus,
   getCoverArt,
+  isPlaying,
 } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
 
@@ -338,10 +339,14 @@ export const server = {
     const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
     logger.debug('Polling the Subsonic server...');
 
-    const [nowPlaying, scanStatus] = await Promise.all([
+    const [sessions, scanStatus] = await Promise.all([
       getNowPlaying(config),
       readScanStatus(config),
     ]);
+    // A session listed by the server is not necessarily playing: keep the
+    // ones that actually are, or everything stops looking idle only when the
+    // track would have ended.
+    const nowPlaying = sessions.filter(isPlaying);
     const library = await readLibraryCounts(config, scanStatus);
     const nowPlayingText = formatNowPlaying(nowPlaying);
 
@@ -375,7 +380,7 @@ export const server = {
   // cache is the fallback when nothing is playing any more.
   async onGetImage(gladys, { config }) {
     const platformId = serverPlatformId(config);
-    const [entry] = await getNowPlaying(config);
+    const [entry] = (await getNowPlaying(config)).filter(isPlaying);
     if (entry?.coverArt) {
       const image = await fetchCoverArt(config, entry.coverArt);
       if (image !== null) {
@@ -427,14 +432,26 @@ export const server = {
       try {
         status = await startScan(config);
       } catch (err) {
-        // Some servers refuse startScan for non-admin users: still report the
-        // current scan status instead of a bare failure.
-        logger.warn(`startScan refused (${err.message}), falling back to getScanStatus`);
-        status = await getScanStatus(config);
-        return {
-          en: `Scan could not be started (${err.message}). Currently scanning: ${status.scanning ? 'yes' : 'no'}.`,
-          fr: `Impossible de lancer le scan (${err.message}). Scan en cours : ${status.scanning ? 'oui' : 'non'}.`,
-        };
+        // Thrown, never returned: Gladys renders a RETURNED message in green,
+        // as a success, and only a THROWN one in red — and a refusal has to
+        // read as a refusal. A thrown message reaches the screen as a plain
+        // string (the core cannot localize it), hence the two languages here.
+        logger.warn(`startScan refused (${err.message})`);
+        if (err.code === 50) {
+          // Navidrome, and most servers, reserve a scan to administrators.
+          throw new Error(
+            'The server refuses a scan from this account: starting one is reserved to ' +
+              'administrators. The sensors do not need it, the library is scanned on the ' +
+              "server's own schedule. / Le serveur refuse le scan pour ce compte : son " +
+              'lancement est réservé aux administrateurs. Les capteurs n’en ont pas besoin, ' +
+              'la bibliothèque est scannée selon la planification du serveur.',
+            { cause: err },
+          );
+        }
+        throw new Error(
+          `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
+          { cause: err },
+        );
       }
       const count = status.count !== undefined ? ` (${status.count} items so far)` : '';
       const countFr =

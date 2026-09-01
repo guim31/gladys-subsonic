@@ -85,5 +85,16 @@ buttons.
   the device again: this re-applies its definition (including the periodic
   polling flag) to the already created device. The first value lands on the
   next poll (60 s by default).
+- **"The server refuses a scan from this account"**: starting a scan is
+  reserved to administrators (Navidrome does so). It does not matter: the
+  button is only a shortcut, the server scans on its own schedule and the
+  sensors follow. Make the account an administrator if you want the button —
+  nothing else in the integration needs those rights.
+- **A track stays on screen although playback stopped**: the server keeps the
+  session in its "now playing" list for a while after the music stops. The
+  integration only counts sessions whose reported state is really playing, but
+  a player that simply goes silent without telling the server (the classic
+  Subsonic protocol has no notion of stopping) stays listed until the track
+  would have ended.
 - **The sensors never change**: the artist/album counters only move after a
   library scan — use the **Scan the music library** button.

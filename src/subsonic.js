@@ -167,10 +167,29 @@ export async function ping(config) {
   };
 }
 
-/** Entries currently being played, one per active stream/player. */
+/** Entries of the "now playing" list, one per player session. */
 export async function getNowPlaying(config) {
   const envelope = await request(config, 'getNowPlaying');
   return asArray(envelope.nowPlaying?.entry);
+}
+
+// A session stays in the now playing list after the music stops: Navidrome
+// keeps a paused or stopped one for 30 minutes, and a player that simply went
+// silent (the classic Subsonic clients never announce a stop) until the track
+// would have ended. Being listed therefore does not mean "is playing" — the
+// OpenSubsonic `state` does.
+const INACTIVE_PLAYBACK_STATES = new Set(['paused', 'stopped', 'expired']);
+
+/**
+ * Is this now playing entry really playing right now?
+ * A plain Subsonic server reports no state at all: every entry it lists is
+ * then taken as active, which is the best it can tell us.
+ * @param {object} entry a getNowPlaying entry
+ * @returns {boolean}
+ */
+export function isPlaying(entry) {
+  const state = typeof entry?.state === 'string' ? entry.state.toLowerCase() : '';
+  return !INACTIVE_PLAYBACK_STATES.has(state);
 }
 
 /** All artists (ID3 tags), flattened from the alphabetical index. */

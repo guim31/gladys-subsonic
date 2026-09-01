@@ -192,6 +192,76 @@ test('server onPoll publishes streams, now playing and the library counts', asyn
   assert.equal(byFeature['server:music-example-com:album-count'], 5);
 });
 
+test('a session left in the list after playback stopped is not counted', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    // Navidrome keeps a stopped or paused session in its now playing list
+    // (30 minutes), so only the reported state tells music apart from
+    // leftovers.
+    getNowPlaying: {
+      nowPlaying: {
+        entry: [
+          { artist: 'Air', title: 'Sexy Boy', coverArt: 'al-1', state: 'stopped' },
+          { artist: 'Air', title: 'La Femme', coverArt: 'al-2', state: 'paused' },
+        ],
+      },
+    },
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  const byFeature = Object.fromEntries(
+    fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
+  );
+  assert.equal(byFeature['server:music-example-com:active-streams'], 0);
+  assert.equal(byFeature['server:music-example-com:now-playing'], 'Nothing playing');
+});
+
+test('a server reporting no playback state keeps every listed session', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch({
+    ...LIBRARY_ROUTES,
+    // Plain Subsonic servers send no `state` at all: listing an entry is the
+    // most they can tell us, so it must still count.
+    getNowPlaying: { nowPlaying: { entry: [{ artist: 'Air', title: 'Sexy Boy' }] } },
+  });
+  try {
+    await server.onPoll(fake, baseConfig);
+  } finally {
+    mock.restore();
+  }
+  const byFeature = Object.fromEntries(
+    fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
+  );
+  assert.equal(byFeature['server:music-example-com:active-streams'], 1);
+  assert.equal(byFeature['server:music-example-com:now-playing'], 'Air — Sexy Boy');
+});
+
+test('a scan refused for lack of rights is reported as an error, not a success', async () => {
+  const mock = mockSubsonicFetch({
+    startScan: { status: 'failed', error: { code: 50, message: 'User is not authorized' } },
+  });
+  try {
+    // Gladys paints a returned message green: a refusal must throw so it
+    // shows up red, and must say why in both languages (a thrown message
+    // reaches the screen as a plain string).
+    await assert.rejects(
+      () => server.actions.start_scan(gladys, { config: baseConfig }),
+      (err) =>
+        /reserved to administrators/.test(err.message) &&
+        /réservé aux administrateurs/.test(err.message) &&
+        err.cause?.code === 50,
+    );
+  } finally {
+    mock.restore();
+  }
+});
+
 test('the cover art is published on the image channel, once per track', async () => {
   resetLibraryCache();
   const fake = createFakeGladys();

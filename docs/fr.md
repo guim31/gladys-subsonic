@@ -93,6 +93,17 @@ déclencher les boutons **Lecture aléatoire** (N morceaux au hasard) ou
   l'onglet **Découverte** et recliquez sur l'appareil : cela réapplique sa
   définition (dont l'activation du relevé périodique) à l'appareil déjà créé.
   La première valeur arrive au relevé suivant (60 s par défaut).
+- **« Le serveur refuse le scan pour ce compte »** : lancer un scan est réservé
+  aux administrateurs (c'est le cas dans Navidrome). Ce n'est pas gênant : le
+  bouton n'est qu'un raccourci, le serveur scanne selon sa propre planification
+  et les capteurs suivent. Passez le compte administrateur si vous tenez à ce
+  bouton — rien d'autre dans l'intégration ne demande ces droits.
+- **Un morceau reste affiché alors que la lecture est arrêtée** : le serveur
+  garde la session dans sa liste « en cours de lecture » un moment après
+  l'arrêt. L'intégration ne compte que les sessions dont l'état est réellement
+  « en lecture », mais un lecteur qui se contente de se taire, sans prévenir le
+  serveur (le protocole Subsonic classique n'a pas de notion d'arrêt), reste
+  listé jusqu'à la fin théorique du morceau.
 - **Les capteurs ne bougent pas** : le nombre d'artistes/albums ne change
   qu'après un scan de la bibliothèque — utilisez le bouton **Scanner la
   bibliothèque musicale**.
