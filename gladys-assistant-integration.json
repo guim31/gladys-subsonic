@@ -6,8 +6,8 @@
     "en": "Link Gladys with a Subsonic-compatible music server: Navidrome, Airsonic, Gonic...",
     "fr": "Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic..."
   },
-  "version": "1.0.7",
-  "docker_image": "ghcr.io/guim31/gladys-subsonic:1.0.7",
+  "version": "1.0.8",
+  "docker_image": "ghcr.io/guim31/gladys-subsonic:1.0.8",
   "gladys_version": ">=4.86.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-subsonic/main/cover.png",
   "categories": ["multimedia"],
