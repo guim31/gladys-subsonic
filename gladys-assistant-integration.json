@@ -8,7 +8,7 @@
   },
   "version": "1.0.8",
   "docker_image": "ghcr.io/guim31/gladys-subsonic:1.0.8",
-  "gladys_version": ">=4.86.0",
+  "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-subsonic/main/cover.png",
   "categories": ["multimedia"],
   "config_schema": [
@@ -206,6 +206,46 @@
           "required": true
         }
       ]
+    }
+  ],
+  "widgets": [
+    {
+      "key": "now_playing",
+      "label": {
+        "en": "Now playing",
+        "fr": "En écoute"
+      },
+      "description": {
+        "en": "The streams in progress: title, artist, album, listener, with the cover.",
+        "fr": "Les lectures en cours : titre, artiste, album, auditeur, avec la pochette."
+      },
+      "icon": "headphones"
+    },
+    {
+      "key": "jukebox",
+      "label": {
+        "en": "Jukebox",
+        "fr": "Jukebox"
+      },
+      "description": {
+        "en": "The server-side jukebox as a remote: cover, track, state, volume, buttons.",
+        "fr": "Le jukebox côté serveur en télécommande : pochette, morceau, état, volume, boutons."
+      },
+      "icon": "speaker",
+      "action_timeout_seconds": 20
+    },
+    {
+      "key": "library",
+      "label": {
+        "en": "Library",
+        "fr": "Bibliothèque"
+      },
+      "description": {
+        "en": "Songs, artists and albums counted, the server identity, the scan status and a scan button.",
+        "fr": "Morceaux, artistes et albums comptés, l'identité du serveur, l'état du scan et un bouton."
+      },
+      "icon": "music",
+      "action_timeout_seconds": 30
     }
   ]
 }
