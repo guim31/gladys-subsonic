@@ -12,6 +12,7 @@
 // renders, and smaller if it still does not fit.
 // -----------------------------------------------------------------------------
 
+import { createHash } from 'node:crypto';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { getCoverArt } from './subsonic.js';
 
@@ -32,18 +33,24 @@ const MAX_REGISTERED = 64;
 
 const IMAGE_KEY_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+// The image types the core accepts (checked by magic numbers on its side).
+const WIDGET_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 /**
- * Image key of a cover (`^[a-z0-9][a-z0-9-]{0,63}$`): `cover-<id>-<size>`,
- * the id reduced to its letters and digits.
+ * Image key of a cover (`^[a-z0-9][a-z0-9-]{0,63}$`):
+ * `cover-<id>-<hash>-<size>`, the id reduced to its letters and digits and
+ * cut, plus 8 hex characters of a sha1 of the raw id: two ids that reduce
+ * to the same letters (`al-1` and `al1`), or share their first 40, never
+ * share a key — the core would serve the wrong cover for an hour.
  * @param {string} coverArtId the `coverArt` of a song or album entry
  * @param {number} [size]
  * @returns {string}
  */
 export function coverImageKey(coverArtId, size = COVER_SIZE) {
-  const safe = String(coverArtId)
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-  return `cover-${(safe || 'x').slice(0, 48)}-${size}`;
+  const raw = String(coverArtId);
+  const safe = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hash = createHash('sha1').update(raw).digest('hex').slice(0, 8);
+  return `cover-${(safe || 'x').slice(0, 40)}-${hash}-${size}`;
 }
 
 /**
@@ -97,16 +104,27 @@ export function splitDataImage(image) {
  * @throws when the server has no usable image for this id
  */
 export async function widgetCoverArt(config, coverArtId) {
+  let reason = '';
   for (const size of FALLBACK_SIZES) {
     const { mime, base64 } = splitDataImage(await getCoverArt(config, coverArtId, size));
+    const type = mime.toLowerCase().trim();
+    if (!WIDGET_IMAGE_MIMES.has(type)) {
+      // The core only renders JPEG, PNG and WebP: a server answering with
+      // another type (an SVG placeholder, a GIF) may still re-encode at a
+      // size it resizes.
+      reason = `${type || 'no content type'} is not a JPEG, PNG or WebP`;
+      logger.debug(`Cover ${coverArtId} at ${size}px: ${reason}, trying another size`);
+      continue;
+    }
     const bytes = Buffer.from(base64, 'base64').length;
     if (bytes <= MAX_WIDGET_IMAGE_BYTES) {
-      logger.debug(`Cover ${coverArtId} served at ${size}px (${mime}, ${bytes} bytes)`);
+      logger.debug(`Cover ${coverArtId} served at ${size}px (${type}, ${bytes} bytes)`);
       return base64;
     }
+    reason = `stays above ${MAX_WIDGET_IMAGE_BYTES} bytes`;
     logger.debug(`Cover ${coverArtId} at ${size}px is ${bytes} bytes, trying smaller`);
   }
-  throw new Error(`Cover art ${coverArtId} stays above ${MAX_WIDGET_IMAGE_BYTES} bytes`);
+  throw new Error(`Cover art ${coverArtId} unusable for a widget: ${reason}`);
 }
 
 /**

@@ -644,6 +644,38 @@ test('the library widget scan button starts a scan and reports it', async () => 
   } finally {
     mock.restore();
   }
+  // A refusal thrown from the widget is a toast too: short, in both
+  // languages, where the configuration button keeps its long explanation.
+  const refused = mockSubsonicFetch({
+    startScan: { status: 'failed', error: { code: 50, message: 'User is not authorized' } },
+  });
+  try {
+    await assert.rejects(
+      () => server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig }),
+      (err) =>
+        err.message.length <= 200 &&
+        /administrators only/.test(err.message) &&
+        /réservé aux administrateurs/.test(err.message) &&
+        err.cause?.code === 50,
+    );
+    await assert.rejects(
+      () => server.actions.start_scan(gladys, { config: baseConfig }),
+      (err) => err.message.length > 200 && /reserved to administrators/.test(err.message),
+    );
+  } finally {
+    refused.restore();
+  }
+  const failed = mockSubsonicFetch({
+    startScan: { status: 'failed', error: { code: 0, message: 'boom' } },
+  });
+  try {
+    await assert.rejects(
+      () => server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig }),
+      /Scan not started: Subsonic error 0: boom \/ Scan non lancé/,
+    );
+  } finally {
+    failed.restore();
+  }
   await assert.rejects(
     () => server.widgetAction(gladys, { actionKey: 'bogus', config: baseConfig }),
     /Unknown widget action/,
@@ -779,11 +811,38 @@ test('jukebox widget shuffle queues random songs, like the configuration action'
   }
 });
 
+test('a refused state publication never fails a jukebox button that acted', async () => {
+  // The jukebox device was never added to Gladys: the core refuses the
+  // state (the SDK throws), but the jukebox DID start playing.
+  const fake = createFakeGladys();
+  fake.publishState = async () => {
+    throw new Error('HTTP 404: device feature not found');
+  };
+  const srv = jukeboxServer({ playing: false });
+  try {
+    await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
+    assert.deepEqual(
+      srv.actions.map((a) => a.action),
+      ['status', 'start'],
+    );
+    await jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig });
+    const message = await jukebox.widgetAction(fake, {
+      actionKey: 'random',
+      config: jukeboxConfig,
+    });
+    assert.match(message.fr, /^Lecture de 2 morceaux/);
+  } finally {
+    srv.restore();
+  }
+});
+
 test('jukebox widget buttons refuse to run while the jukebox is disabled', async () => {
   const fake = createFakeGladys();
   await assert.rejects(
     () => jukebox.widgetAction(fake, { actionKey: 'toggle', config: baseConfig }),
-    /Enable the jukebox/,
+    (err) =>
+      err.message.length <= 200 &&
+      /Jukebox not enabled\. \/ Jukebox non activé\./.test(err.message),
   );
   await assert.rejects(
     () => jukebox.widgetAction(fake, { actionKey: 'bogus', config: jukeboxConfig }),

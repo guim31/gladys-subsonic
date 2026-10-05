@@ -214,18 +214,24 @@ export const jukebox = {
  * @param {{ actionKey: string, config: object }} input
  */
 async function widgetAction(gladys, { actionKey, config }) {
-  const guard = jukeboxGuard(config);
-  if (guard) {
+  if (jukeboxGuard(config)) {
     // The widget itself tells the user what to enable: a tap that reaches
-    // this point comes from a content built before the config changed.
-    throw new Error(`${guard.en} / ${guard.fr}`);
+    // this point comes from a content built before the config changed. A
+    // thrown message becomes a toast of 200 characters at most: keep it short.
+    throw new Error('Jukebox not enabled. / Jukebox non activé.');
   }
   const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
-  const publishPlayback = (status, expected) =>
-    gladys.publishState(
-      ids.feature(FEATURE.PLAYBACK_STATE),
-      typeof status?.playing === 'boolean' ? (status.playing ? 1 : 0) : expected,
-    );
+  // The command already ran: a refused publication (the jukebox device was
+  // never added to Gladys, so the core answers 4xx) must not turn a
+  // successful tap into a red toast.
+  const publishPlayback = async (status, expected) => {
+    const state = typeof status?.playing === 'boolean' ? (status.playing ? 1 : 0) : expected;
+    try {
+      await gladys.publishState(ids.feature(FEATURE.PLAYBACK_STATE), state);
+    } catch (err) {
+      logger.warn(`Playback state not published after a widget action (${err.message})`);
+    }
+  };
 
   switch (actionKey) {
     case JUKEBOX_ACTION.TOGGLE: {

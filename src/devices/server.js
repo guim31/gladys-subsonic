@@ -473,10 +473,10 @@ export const server = {
       throw new Error(`Unknown widget action ${actionKey}`);
     }
     if (!isConfigured(config)) {
-      throw new Error('Server not configured / Serveur non configuré');
+      throw new Error('Server not configured. / Serveur non configuré.');
     }
     logger.info('Widget scan -> starting a library scan');
-    return runScan(config);
+    return runScan(config, { widget: true });
   },
 };
 
@@ -484,13 +484,16 @@ export const server = {
  * Start a library scan and describe the outcome, for the configuration
  * button and the widget button alike.
  * @param {object} config
+ * @param {{ widget?: boolean }} [options] `widget` when tapped from the
+ *   dashboard: a thrown message is then a toast, 200 characters at most,
+ *   so the refusal is said in a few words
  * @returns {Promise<{ en: string, fr: string }>} the message shown to the user
  * @throws when the server refuses: Gladys renders a RETURNED message in
  *   green, as a success, and only a THROWN one in red — and a refusal has to
  *   read as a refusal. A thrown message reaches the screen as a plain string
  *   (the core cannot localize it), hence the two languages.
  */
-async function runScan(config) {
+async function runScan(config, { widget = false } = {}) {
   let status;
   try {
     status = await startScan(config);
@@ -499,16 +502,20 @@ async function runScan(config) {
     if (err.code === 50) {
       // Navidrome, and most servers, reserve a scan to administrators.
       throw new Error(
-        'The server refuses a scan from this account: starting one is reserved to ' +
-          'administrators. The sensors do not need it, the library is scanned on the ' +
-          "server's own schedule. / Le serveur refuse le scan pour ce compte : son " +
-          'lancement est réservé aux administrateurs. Les capteurs n’en ont pas besoin, ' +
-          'la bibliothèque est scannée selon la planification du serveur.',
+        widget
+          ? 'Scan refused: administrators only. / Scan refusé : réservé aux administrateurs.'
+          : 'The server refuses a scan from this account: starting one is reserved to ' +
+              'administrators. The sensors do not need it, the library is scanned on the ' +
+              "server's own schedule. / Le serveur refuse le scan pour ce compte : son " +
+              'lancement est réservé aux administrateurs. Les capteurs n’en ont pas besoin, ' +
+              'la bibliothèque est scannée selon la planification du serveur.',
         { cause: err },
       );
     }
     throw new Error(
-      `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
+      widget
+        ? `Scan not started: ${err.message} / Scan non lancé : ${err.message}`
+        : `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
       { cause: err },
     );
   }
