@@ -35,13 +35,15 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
 - **`library`** : identité du serveur depuis le `ping` du démarrage (`serverInfo` dans
   `index.js`, remis à null à chaque `checkServerAndPublish`, relu à la demande s'il manque) ;
   `ttl_seconds` 900, 10 pendant un scan. `getScanStatus` refusé → ligne « Indisponible ».
-- **Pochettes** : `src/covers.js`. Le contenu ne porte que des clés `cover-<id réduit à
-[a-z0-9]>-300` ; un registre borné (64) retient l'id derrière chaque clé, car l'id n'est pas
-  reconstructible depuis la clé. `onWidgetGetImage` demande la pochette en 300 px, puis 160 px
-  si elle dépasse 300 Ko décodés, et renvoie le base64 **brut** (le `image/jpeg;base64,` de
-  `getCoverArt` est découpé par `splitDataImage`). Pas de repli sur l'image d'attente SVG du
-  canal caméra : le cœur n'accepte que PNG, JPEG et WebP, donc un morceau sans pochette est
-  publié sans `image`.
+- **Pochettes** : `src/covers.js`. Le contenu ne porte que des clés
+  `cover-<id réduit à [a-z0-9], 40 car.>-<8 hex de sha1(id)>-300` (le hachage évite qu'un
+  `al-1` et un `al1`, ou deux ids longs, partagent une clé et donc une pochette cachée 1 h) ;
+  un registre borné (64) retient l'id derrière chaque clé, car l'id n'est pas reconstructible
+  depuis la clé. `onWidgetGetImage` demande la pochette en 300 px, puis 160 px si elle
+  dépasse 300 Ko décodés ou n'est pas un JPEG/PNG/WebP (seuls types acceptés par le cœur),
+  et renvoie le base64 **brut** (le `image/jpeg;base64,` de `getCoverArt` est découpé par
+  `splitDataImage`). Pas de repli sur l'image d'attente SVG du canal caméra : un morceau
+  sans pochette est publié sans `image`.
 - **États vides** : toujours un `text` body (non configuré, jukebox désactivé, rien en écoute,
   serveur injoignable avec le message d'erreur), jamais une erreur ; `ttl_seconds` 300 pour les
   états qui attendent l'utilisateur, 30 pour un serveur injoignable.
@@ -153,8 +155,14 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   la grammaire des clés d'image sans perte : d'où le registre clé → id. Après un redémarrage, une
   clé inconnue est refusée ; le cœur recharge le contenu et la clé est réenregistrée.
 - Un message **jeté** par une action (configuration ou widget) atteint l'écran tel quel, sans
-  localisation : les messages longs bilingues de `runScan` dépassent les 200 caractères d'un
-  toast, le cœur les tronque sûrement. Non vérifié en réel.
+  localisation. Un toast de widget fait **200 caractères au plus** (le français d'un message
+  bilingue long disparaît) : le chemin widget jette des messages bilingues courts
+  (`runScan(config, { widget: true })`, garde du jukebox), les longs restent aux boutons de
+  configuration.
+- Une publication d'état après un bouton de widget peut être **refusée par le cœur** (appareil
+  jamais ajouté à Gladys : réponse non-2xx, le client HTTP du SDK lève). La commande a déjà agi :
+  la publication est entourée d'un `try/catch` et loguée, l'action ne doit jamais échouer pour
+  elle.
 - `jukeboxControl` : `get` renvoie `jukeboxPlaylist` (avec `entry`, `currentIndex`, `playing`,
   `gain`), toute autre action renvoie `jukeboxStatus` (sans `entry`). `skip` lance la lecture.
   `currentIndex` peut manquer ou sortir de la file : `currentJukeboxTrack` se rabat sur 0.

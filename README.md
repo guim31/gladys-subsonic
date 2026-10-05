@@ -5,8 +5,8 @@ serveurs musicaux compatibles avec l'[API Subsonic](https://www.subsonic.org/pag
 **[Navidrome](https://www.navidrome.org)**, Airsonic-Advanced, Gonic, LMS,
 Subsonic…
 
-Requiert Gladys 4.86 ou plus récent ; les widgets de tableau de bord demandent
-Gladys 5.1 (le manifeste déclare `>=5.1.0`).
+Requiert Gladys 5.1 ou plus récent (les versions 1.0.x restent compatibles
+Gladys ≥ 4.86).
 
 Construite à partir du
 [template officiel JavaScript](https://github.com/GladysAssistant/integration-template-js)
