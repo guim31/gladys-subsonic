@@ -24,6 +24,8 @@ Subsonic… It was designed and tested first against **Navidrome**.
   play/pause, previous/next, volume and playback state.
 - Buttons in the Configuration screen: test the connection, start a library
   scan, play random songs or a playlist on the jukebox.
+- Three dashboard widgets (Gladys 5.1 or later): **Now playing**, **Jukebox**
+  and **Library** — see below.
 
 ## Configuration
 
@@ -67,6 +69,43 @@ From your scenes or the dashboard you can then: play/pause, skip to the next
 or previous track, set the volume, and trigger the **Play random songs**
 (N random tracks) or **Play a playlist** (by exact name, case-insensitive)
 buttons.
+
+## Dashboard widgets
+
+With Gladys 5.1 or later, the integration offers three widgets (**Edit the
+dashboard** → **Add a widget**). They have no settings: each one follows the
+configured server. The number tiles are bound to the sensors of the "Subsonic
+server" device: add it to Gladys for them to show a value.
+
+- **Now playing** — the number of streams in progress (the tile follows the
+  sensor live) and one row per session the server lists: title, artist ·
+  album, the cover, and as a badge the player or listener name, green when
+  the session really plays, grey when it is paused or stopped (the server
+  keeps a session listed for a while after it stops). Eight rows at most,
+  the active streams first. Nothing playing: "Nothing is playing right now."
+  Refreshed every 30 seconds; the list read by the periodic poll is reused
+  while it is less than 30 seconds old.
+- **Jukebox** — the server-side playback as a remote: the cover and the title
+  of the current track, artist · album, then the state (Playing / Stopped),
+  the volume and the position in the queue ("2 / 20"), and four buttons:
+  **Pause** or **Play** depending on the state, **Previous**, **Next** and
+  **Shuffle** (20 random songs, like the configuration button). An empty queue
+  only offers **Shuffle**. Until the jukebox device is enabled in the
+  configuration, the widget says so. Refreshed every 30 seconds, and as soon
+  as a button acted. The buttons work even if the "Subsonic jukebox" device
+  was not added to Gladys; the playback state published to Gladys follows
+  every command.
+- **Library** — three live tiles (**Songs**, **Artists**, **Albums**), the
+  server identity (type and version returned by the ping, for example
+  `navidrome 0.53.3`), the scan status ("Running · n" or "Done · n songs";
+  "Unavailable" when the server refuses `getScanStatus` to this account) and
+  a **Scan** button. Refreshed every 15 minutes, every 10 seconds during a
+  scan. The button is subject to the same rights as the configuration one:
+  Navidrome reserves scans to administrators.
+
+The widget covers are served by the integration (asked to the server at
+300 px) and cached one hour by Gladys. A track without a cover shows without
+an image.
 
 ## Troubleshooting
 

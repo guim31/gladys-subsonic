@@ -2,15 +2,52 @@
 
 Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic...
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.12.0, `gladys_version` `>=4.86.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.14.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
-## État au 02/10/2026
+## État au 05/10/2026
 
-Version 1.0.8 publiée, indexée dans le store. Elle n'a ni widget ni déclencheur de scène : les pièges de la section « Widgets » ne la concernent qu'en cas de passage au SDK 0.14 et à Gladys 5.1.
+Version 1.0.8 publiée, indexée dans le store, sans widget. La branche
+`feat/dashboard-widgets` (PR « feat: dashboard widgets (Gladys 5.1) ») passe au SDK 0.14 et à
+`gladys_version >=5.1.0`, et ajoute trois widgets : `now_playing`, `jukebox`, `library`. Rien de
+tout cela n'a été vu sur une instance Gladys ni sur un serveur Subsonic réel : seuls les tests, le
+lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mises à jour des cœurs
+4.x : la Release qui l'embarque est une **minor**, à annoncer.
 
-**Aucune note de conception n'a encore été consignée pour ce dépôt** : la lire dans le code, le README et `docs/`, et l'écrire ici au fil des découvertes.
+## Choix
+
+- **Widgets sans réglage** : chacun suit le serveur configuré (une intégration = un serveur).
+  Les tuiles chiffrées sont liées aux fonctionnalités publiées (`device_feature` =
+  `gladys.externalIds('server', serverPlatformId(config)).feature(clé)`) : elles ne vivent que si
+  l'appareil « Serveur Subsonic » a été ajouté à Gladys.
+- **`now_playing` liste toutes les sessions de `getNowPlaying`**, les lectures réelles
+  (`isPlaying`) d'abord, badge `success` pour elles et `neutral` pour les autres ; le capteur
+  `active-streams`, lui, ne compte que les lectures réelles. La liste lue par le poll est mise
+  en cache 30 s (`readNowPlaying` dans `server.js`) : le widget la réutilise, sinon il
+  l'appelle.
+- **`jukebox`** : les boutons sont des actions de widget (`toggle`, `previous`, `next`,
+  `random`), pas des `device_feature` : ils marchent sans l'appareil jukebox ajouté. `toggle`
+  relit `status` au moment du tap plutôt que de faire confiance à la carte affichée. Après
+  chaque action, l'état de lecture est publié à Gladys depuis le `playing` de la réponse
+  (`skip` et `start` renvoient un `jukeboxStatus`). Pas de toast pour toggle/précédent/suivant
+  (le cœur recharge le widget dès la résolution), un toast pour aléatoire et scan.
+- **`library`** : identité du serveur depuis le `ping` du démarrage (`serverInfo` dans
+  `index.js`, remis à null à chaque `checkServerAndPublish`, relu à la demande s'il manque) ;
+  `ttl_seconds` 900, 10 pendant un scan. `getScanStatus` refusé → ligne « Indisponible ».
+- **Pochettes** : `src/covers.js`. Le contenu ne porte que des clés `cover-<id réduit à
+[a-z0-9]>-300` ; un registre borné (64) retient l'id derrière chaque clé, car l'id n'est pas
+  reconstructible depuis la clé. `onWidgetGetImage` demande la pochette en 300 px, puis 160 px
+  si elle dépasse 300 Ko décodés, et renvoie le base64 **brut** (le `image/jpeg;base64,` de
+  `getCoverArt` est découpé par `splitDataImage`). Pas de repli sur l'image d'attente SVG du
+  canal caméra : le cœur n'accepte que PNG, JPEG et WebP, donc un morceau sans pochette est
+  publié sans `image`.
+- **États vides** : toujours un `text` body (non configuré, jukebox désactivé, rien en écoute,
+  serveur injoignable avec le message d'erreur), jamais une erreur ; `ttl_seconds` 300 pour les
+  états qui attendent l'utilisateur, 30 pour un serveur injoignable.
+- `src/widgets.js` est **pur** (aucun réseau) : chaque contenu est passé à
+  `validateWidgetContent` dans `test/widgets.test.js`. Les textes sont des objets `{ en, fr }`,
+  le cœur choisit.
 
 ## Travailler sur ce dépôt
 
@@ -105,3 +142,19 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
 - La règle `data/` du `.gitignore` du template (pour le volume `/data`) exclut aussi `src/data/` :
   l'ancrer en `/data/`, dans `.prettierignore` aussi. Avant de pousser un dépôt neuf, tester sur
   un `git clone` propre, pas sur la copie de travail.
+- Le validateur du store exige Node ≥ 24 dans son `engines` : sous Node 22 il affiche un
+  `EBADENGINE` mais tourne quand même.
+
+## Pièges propres à ce dépôt
+
+- `getCoverArt` renvoie `<mime>;base64,…` pour le canal caméra (≤ 150 Ko **avec** le préfixe) ;
+  une image de widget est du base64 brut, ≤ 300 Ko **décodés** : deux chemins, deux bornes.
+- Les ids de pochette (`al-…`, `mf-…` chez Navidrome, numériques ailleurs) ne tiennent pas dans
+  la grammaire des clés d'image sans perte : d'où le registre clé → id. Après un redémarrage, une
+  clé inconnue est refusée ; le cœur recharge le contenu et la clé est réenregistrée.
+- Un message **jeté** par une action (configuration ou widget) atteint l'écran tel quel, sans
+  localisation : les messages longs bilingues de `runScan` dépassent les 200 caractères d'un
+  toast, le cœur les tronque sûrement. Non vérifié en réel.
+- `jukeboxControl` : `get` renvoie `jukeboxPlaylist` (avec `entry`, `currentIndex`, `playing`,
+  `gain`), toute autre action renvoie `jukeboxStatus` (sans `entry`). `skip` lance la lecture.
+  `currentIndex` peut manquer ou sortir de la file : `currentJukeboxTrack` se rabat sur 0.
