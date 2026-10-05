@@ -9,10 +9,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DEVICE_BLUEPRINTS } from '../src/devices/index.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
+import { WIDGET, JUKEBOX_ACTION, LIBRARY_ACTION } from '../src/widgets.js';
+import { server } from '../src/devices/server.js';
+import { jukebox } from '../src/devices/jukebox.js';
 
-const manifest = JSON.parse(
-  await readFile(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
-);
+const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+const manifest = JSON.parse(await read('../gladys-assistant-integration.json'));
+const indexSource = await read('../index.js');
+const packageJson = JSON.parse(await read('../package.json'));
 
 test('every manifest action has a registered handler', () => {
   const handled = new Set(DEVICE_BLUEPRINTS.flatMap((bp) => Object.keys(bp.actions ?? {})));
@@ -80,5 +84,71 @@ test('section fields are purely presentational', () => {
     for (const link of section.links ?? []) {
       assert.match(link.url, /^https:\/\//, 'section links must be https');
     }
+  }
+});
+
+// --- Dashboard widgets --------------------------------------------------------
+
+test('the declared widgets are exactly the ones the code serves', () => {
+  assert.deepEqual(manifest.widgets.map((w) => w.key).sort(), Object.values(WIDGET).sort());
+  for (const name of Object.keys(WIDGET)) {
+    assert.ok(indexSource.includes(`onWidgetGet(WIDGET.${name}`), `no onWidgetGet for ${name}`);
+  }
+  // The widgets with buttons have an action handler, and the handler covers
+  // every action key its content can carry.
+  assert.ok(indexSource.includes('onWidgetAction(WIDGET.JUKEBOX'));
+  assert.ok(indexSource.includes('onWidgetAction(WIDGET.LIBRARY'));
+  assert.ok(indexSource.includes('onWidgetGetImage('), 'covers are served by key');
+  assert.equal(typeof jukebox.widgetAction, 'function');
+  assert.equal(typeof server.widgetAction, 'function');
+  for (const key of [...Object.values(JUKEBOX_ACTION), ...Object.values(LIBRARY_ACTION)]) {
+    assert.match(key, /^[a-z0-9_]{2,32}$/);
+  }
+});
+
+test('widgets need Gladys 5.1 and the 0.14 SDK', () => {
+  assert.match(manifest.gladys_version, />=\s*5\.1\.0/, 'widgets need the 5.1 core');
+  assert.match(packageJson.dependencies['@gladysassistant/integration-sdk'], /\^0\.14\./);
+});
+
+test('widget declarations respect the store constraints', () => {
+  assert.ok(manifest.widgets.length >= 1 && manifest.widgets.length <= 5);
+  for (const widget of manifest.widgets) {
+    assert.match(widget.key, /^[a-z0-9_]{2,32}$/);
+    for (const lang of ['en', 'fr']) {
+      const label = widget.label[lang];
+      assert.ok(label.length >= 3 && label.length <= 30, `${widget.key} label.${lang} "${label}"`);
+      const description = widget.description?.[lang] ?? '';
+      assert.ok(description.length <= 100, `${widget.key} description.${lang} is too long`);
+    }
+    assert.match(widget.icon, /^[a-z0-9-]{1,40}$/, 'a Feather icon name');
+    if (widget.action_timeout_seconds !== undefined) {
+      assert.ok(
+        widget.action_timeout_seconds >= 5 && widget.action_timeout_seconds <= 120,
+        `${widget.key} action_timeout_seconds out of range`,
+      );
+    }
+    for (const field of widget.settings ?? []) {
+      if (field.type === 'number') {
+        for (const bound of ['min', 'max', 'default']) {
+          if (field[bound] !== undefined) {
+            assert.ok(Number.isInteger(field[bound]), `${field.key}.${bound} must be an integer`);
+          }
+        }
+      }
+    }
+  }
+  // The widgets with buttons declare how long a tap may take.
+  for (const key of [WIDGET.JUKEBOX, WIDGET.LIBRARY]) {
+    const widget = manifest.widgets.find((w) => w.key === key);
+    assert.equal(typeof widget.action_timeout_seconds, 'number', `${key} has buttons`);
+  }
+});
+
+test('the user documentation describes the widgets in both languages', async () => {
+  for (const lang of ['en', 'fr']) {
+    const doc = await read(`../docs/${lang}.md`);
+    assert.ok(doc.length >= 300, `docs/${lang}.md is too short for the store`);
+    assert.match(doc, /widget/i, `docs/${lang}.md must document the widgets`);
   }
 });

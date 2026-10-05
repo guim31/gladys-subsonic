@@ -28,6 +28,8 @@ Subsonic… Elle a été pensée et testée d'abord pour **Navidrome**.
 - Des boutons dans l'écran de configuration : tester la connexion, lancer un
   scan de la bibliothèque, lancer une lecture aléatoire ou une playlist sur le
   jukebox.
+- Trois widgets de tableau de bord (Gladys 5.1 ou plus récent) : **En
+  écoute**, **Jukebox** et **Bibliothèque** — voir plus bas.
 
 ## Configuration
 
@@ -74,6 +76,45 @@ Vous pouvez ensuite, depuis vos scènes ou le tableau de bord : mettre en
 lecture/pause, passer au morceau suivant ou précédent, régler le volume, et
 déclencher les boutons **Lecture aléatoire** (N morceaux au hasard) ou
 **Jouer une playlist** (par son nom exact, la casse est ignorée).
+
+## Widgets du tableau de bord
+
+Avec Gladys 5.1 ou plus récent, l'intégration propose trois widgets
+(**Modifier le tableau de bord** → **Ajouter un widget**). Ils n'ont aucun
+réglage : chacun suit le serveur configuré. Les tuiles chiffrées sont liées
+aux capteurs de l'appareil « Serveur Subsonic » : ajoutez-le à Gladys pour
+qu'elles affichent une valeur.
+
+- **En écoute** — le nombre de lectures en cours (la tuile suit le capteur en
+  direct) et une ligne par session que le serveur liste : titre, artiste ·
+  album, la pochette, et en badge le nom du lecteur ou de l'auditeur, vert
+  quand la session joue réellement, gris quand elle est en pause ou arrêtée
+  (le serveur garde une session un moment après l'arrêt). Huit lignes au
+  plus, les lectures actives en premier. Sans lecture : « Rien en écoute. »
+  Rafraîchi toutes les 30 secondes ; la liste lue par le relevé périodique
+  est réutilisée quand elle a moins de 30 secondes.
+- **Jukebox** — la lecture côté serveur en télécommande : la pochette et le
+  titre du morceau en cours, artiste · album, puis l'état (Lecture / Arrêt),
+  le volume et la position dans la file (« 2 / 20 »), et quatre boutons :
+  **Pause** ou **Lecture** selon l'état, **Précédent**, **Suivant** et
+  **Aléatoire** (20 morceaux au hasard, comme le bouton de la configuration).
+  Une file vide ne propose qu'**Aléatoire**. Tant que l'appareil jukebox
+  n'est pas activé dans la configuration, le widget le dit. Rafraîchi toutes
+  les 30 secondes, et dès qu'un bouton a agi. Les boutons fonctionnent même si
+  l'appareil « Jukebox Subsonic » n'a pas été ajouté à Gladys ; l'état de
+  lecture publié à Gladys suit chaque commande.
+- **Bibliothèque** — trois tuiles en direct (**Morceaux**, **Artistes**,
+  **Albums**), l'identité du serveur (type et version renvoyés par le ping,
+  par exemple `navidrome 0.53.3`), l'état du scan (« En cours · n » ou
+  « Terminé · n morceaux » ; « Indisponible » quand le serveur refuse
+  `getScanStatus` à ce compte) et un bouton **Scanner**. Rafraîchi toutes les
+  15 minutes, toutes les 10 secondes pendant un scan. Le bouton est soumis aux
+  mêmes droits que celui de la configuration : Navidrome réserve le scan aux
+  administrateurs.
+
+Les pochettes des widgets sont servies par l'intégration (elles sont demandées
+au serveur en 300 px) et mises en cache une heure par Gladys. Un morceau sans
+pochette s'affiche sans image.
 
 ## Dépannage
 

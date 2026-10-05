@@ -29,12 +29,14 @@ import {
   isPlaying,
 } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
+import { LIBRARY_ACTION } from '../widgets.js';
 
 const DEVICE_TYPE = 'server';
 
 const logger = createLogger({ name: DEVICE_TYPE });
 
-const FEATURE = {
+/** Feature keys of the server device (the `external_id` suffixes). */
+export const SERVER_FEATURE = {
   ACTIVE_STREAMS: 'active-streams',
   NOW_PLAYING: 'now-playing',
   COVER_ART: 'cover-art',
@@ -42,6 +44,7 @@ const FEATURE = {
   ARTIST_COUNT: 'artist-count',
   ALBUM_COUNT: 'album-count',
 };
+const FEATURE = SERVER_FEATURE;
 
 // Gladys refuses an image whose `<mime>;base64,...` string exceeds 150 KB.
 const MAX_IMAGE_SIZE = 150 * 1024;
@@ -94,16 +97,44 @@ const LIBRARY_REFRESH_MS = 60 * 60 * 1000;
 // cached entry carries its platform id so switching server invalidates it.
 let libraryCache = null;
 
+// Last now playing list read from the server, with its platform id and age:
+// the now_playing widget asks for the same list the poll just read, and
+// reuses it while it is younger than the widget's own freshness.
+let nowPlayingCache = null;
+export const NOW_PLAYING_MAX_AGE_MS = 30 * 1000;
+
 // Cover art last sent to Gladys: publishing it again on every poll would
 // burn the image rate limit (12/minute per device) for nothing, so the id is
 // kept to detect a real track change. The image itself is kept so the
 // on-demand path can answer even when nothing is playing any more.
 let coverArtCache = null;
 
-/** Drop the cached library counts and cover art (used by the tests). */
+/** Drop the cached library counts, cover art and now playing list (tests). */
 export function resetLibraryCache() {
   libraryCache = null;
   coverArtCache = null;
+  nowPlayingCache = null;
+}
+
+/**
+ * The now playing list, from the cache when it was read less than `maxAgeMs`
+ * ago for this server, from the server otherwise (and cached).
+ * @param {object} config
+ * @param {number} [maxAgeMs] 0 forces a fresh read
+ * @returns {Promise<Array<object>>} getNowPlaying entries
+ */
+export async function readNowPlaying(config, maxAgeMs = NOW_PLAYING_MAX_AGE_MS) {
+  const platformId = serverPlatformId(config);
+  if (
+    nowPlayingCache !== null &&
+    nowPlayingCache.platformId === platformId &&
+    Date.now() - nowPlayingCache.fetchedAt < maxAgeMs
+  ) {
+    return nowPlayingCache.entries;
+  }
+  const entries = await getNowPlaying(config);
+  nowPlayingCache = { platformId, entries, fetchedAt: Date.now() };
+  return entries;
 }
 
 /**
@@ -224,7 +255,7 @@ export function formatNowPlaying(entries) {
  * @param {object} config
  * @returns {Promise<object|null>}
  */
-async function readScanStatus(config) {
+export async function readScanStatus(config) {
   try {
     return await getScanStatus(config);
   } catch (err) {
@@ -340,7 +371,7 @@ export const server = {
     logger.debug('Polling the Subsonic server...');
 
     const [sessions, scanStatus] = await Promise.all([
-      getNowPlaying(config),
+      readNowPlaying(config, 0),
       readScanStatus(config),
     ]);
     // A session listed by the server is not necessarily playing: keep the
@@ -428,40 +459,72 @@ export const server = {
         };
       }
       logger.info('Action start_scan -> starting a library scan');
-      let status;
-      try {
-        status = await startScan(config);
-      } catch (err) {
-        // Thrown, never returned: Gladys renders a RETURNED message in green,
-        // as a success, and only a THROWN one in red — and a refusal has to
-        // read as a refusal. A thrown message reaches the screen as a plain
-        // string (the core cannot localize it), hence the two languages here.
-        logger.warn(`startScan refused (${err.message})`);
-        if (err.code === 50) {
-          // Navidrome, and most servers, reserve a scan to administrators.
-          throw new Error(
-            'The server refuses a scan from this account: starting one is reserved to ' +
+      return runScan(config);
+    },
+  },
+
+  /**
+   * A button of the library widget was tapped. Resolves the toast message.
+   * @param {object} _gladys
+   * @param {{ actionKey: string, config: object }} input
+   */
+  async widgetAction(_gladys, { actionKey, config }) {
+    if (actionKey !== LIBRARY_ACTION.SCAN) {
+      throw new Error(`Unknown widget action ${actionKey}`);
+    }
+    if (!isConfigured(config)) {
+      throw new Error('Server not configured. / Serveur non configuré.');
+    }
+    logger.info('Widget scan -> starting a library scan');
+    return runScan(config, { widget: true });
+  },
+};
+
+/**
+ * Start a library scan and describe the outcome, for the configuration
+ * button and the widget button alike.
+ * @param {object} config
+ * @param {{ widget?: boolean }} [options] `widget` when tapped from the
+ *   dashboard: a thrown message is then a toast, 200 characters at most,
+ *   so the refusal is said in a few words
+ * @returns {Promise<{ en: string, fr: string }>} the message shown to the user
+ * @throws when the server refuses: Gladys renders a RETURNED message in
+ *   green, as a success, and only a THROWN one in red — and a refusal has to
+ *   read as a refusal. A thrown message reaches the screen as a plain string
+ *   (the core cannot localize it), hence the two languages.
+ */
+async function runScan(config, { widget = false } = {}) {
+  let status;
+  try {
+    status = await startScan(config);
+  } catch (err) {
+    logger.warn(`startScan refused (${err.message})`);
+    if (err.code === 50) {
+      // Navidrome, and most servers, reserve a scan to administrators.
+      throw new Error(
+        widget
+          ? 'Scan refused: administrators only. / Scan refusé : réservé aux administrateurs.'
+          : 'The server refuses a scan from this account: starting one is reserved to ' +
               'administrators. The sensors do not need it, the library is scanned on the ' +
               "server's own schedule. / Le serveur refuse le scan pour ce compte : son " +
               'lancement est réservé aux administrateurs. Les capteurs n’en ont pas besoin, ' +
               'la bibliothèque est scannée selon la planification du serveur.',
-            { cause: err },
-          );
-        }
-        throw new Error(
-          `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
-          { cause: err },
-        );
-      }
-      const count = status.count !== undefined ? ` (${status.count} items so far)` : '';
-      const countFr =
-        status.count !== undefined ? ` (${status.count} éléments pour l'instant)` : '';
-      return {
-        en: status.scanning ? `Library scan in progress${count}.` : 'Library scan finished.',
-        fr: status.scanning
-          ? `Scan de la bibliothèque en cours${countFr}.`
-          : 'Scan de la bibliothèque terminé.',
-      };
-    },
-  },
-};
+        { cause: err },
+      );
+    }
+    throw new Error(
+      widget
+        ? `Scan not started: ${err.message} / Scan non lancé : ${err.message}`
+        : `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
+      { cause: err },
+    );
+  }
+  const count = status.count !== undefined ? ` (${status.count} items so far)` : '';
+  const countFr = status.count !== undefined ? ` (${status.count} éléments pour l'instant)` : '';
+  return {
+    en: status.scanning ? `Library scan in progress${count}.` : 'Library scan finished.',
+    fr: status.scanning
+      ? `Scan de la bibliothèque en cours${countFr}.`
+      : 'Scan de la bibliothèque terminé.',
+  };
+}

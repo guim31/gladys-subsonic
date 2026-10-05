@@ -5,6 +5,9 @@ serveurs musicaux compatibles avec l'[API Subsonic](https://www.subsonic.org/pag
 **[Navidrome](https://www.navidrome.org)**, Airsonic-Advanced, Gonic, LMS,
 Subsonic…
 
+Requiert Gladys 5.1 ou plus récent (les versions 1.0.x restent compatibles
+Gladys ≥ 4.86).
+
 Construite à partir du
 [template officiel JavaScript](https://github.com/GladysAssistant/integration-template-js)
 et du SDK [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js).
@@ -15,6 +18,16 @@ et du SDK [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistan
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Serveur Subsonic** | Capteurs : en écoute (texte), pochette de l'album (canal image), lectures en cours, morceaux/artistes/albums de la bibliothèque |
 | **Jukebox Subsonic** | Lecture/pause, précédent/suivant, volume, état de lecture — via `jukeboxControl` (optionnel)                                    |
+
+Widgets de tableau de bord (Gladys ≥ 5.1) :
+
+- **En écoute** (`now_playing`) — la tuile des lectures en cours et une ligne
+  par session listée par le serveur, avec la pochette ;
+- **Jukebox** (`jukebox`) — la lecture côté serveur en télécommande :
+  pochette, titre, état, volume, file, boutons lecture/pause, précédent,
+  suivant et aléatoire ;
+- **Bibliothèque** (`library`) — morceaux, artistes et albums en tuiles
+  vivantes, l'identité du serveur, l'état du scan et un bouton **Scanner**.
 
 Boutons de l'écran de configuration :
 
@@ -39,10 +52,12 @@ configuration.
 
 ```
 .
-├─ index.js                          # bootstrap SDK + câblage des événements
+├─ index.js                          # bootstrap SDK + câblage des événements et widgets
 ├─ src/
 │  ├─ subsonic.js                    # client de l'API Subsonic (auth, endpoints)
 │  ├─ config.js                      # valeurs par défaut + normalisation
+│  ├─ widgets.js                     # contenus des widgets (fonctions pures)
+│  ├─ covers.js                      # pochettes des widgets (clés, registre, octets)
 │  └─ devices/
 │     ├─ index.js                    # registre des appareils
 │     ├─ server.js                   # capteurs du serveur + actions scan/test

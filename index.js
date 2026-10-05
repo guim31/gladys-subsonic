@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
 // Entry point of the Gladys Subsonic integration.
 //
-// Role of this file: wire the SDK to the device catalog (src/devices/). It holds
-// NO Subsonic logic: all the API "work" lives in the device modules and in
-// src/subsonic.js. This file only:
+// Role of this file: wire the SDK to the device catalog (src/devices/) and to
+// the dashboard widgets (src/widgets.js). It holds NO Subsonic logic: all the
+// API "work" lives in the device modules and in src/subsonic.js. This file
+// only:
 //   1. instantiates the SDK (connection, auth, reconnection: handled for you);
 //   2. registers the event handlers BEFORE connect();
 //   3. connects, checks the Subsonic server and publishes the devices.
@@ -17,17 +18,41 @@
 
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig, isConfigured } from './src/config.js';
-import { ping } from './src/subsonic.js';
+import { ping, jukeboxControl } from './src/subsonic.js';
 import {
   DEVICE_BLUEPRINTS,
   buildDiscoveredDevices,
   findBlueprintByDevice,
 } from './src/devices/index.js';
+import {
+  server,
+  serverPlatformId,
+  readNowPlaying,
+  readScanStatus,
+  SERVER_FEATURE,
+} from './src/devices/server.js';
+import { jukebox } from './src/devices/jukebox.js';
+import {
+  WIDGET,
+  buildNowPlayingContent,
+  buildJukeboxContent,
+  buildLibraryContent,
+  notConfiguredContent,
+  unreachableContent,
+} from './src/widgets.js';
+import { createCoverRegistry, resolveWidgetImage } from './src/covers.js';
 
 const gladys = new GladysIntegration();
 
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
+
+// Identity of the server (type, version) as its ping answers: read when the
+// server is checked, shown by the library widget.
+let serverInfo = null;
+
+// The cover art ids handed out to the widgets, by image key.
+const covers = createCoverRegistry();
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
@@ -78,6 +103,95 @@ for (const blueprint of DEVICE_BLUEPRINTS) {
   }
 }
 
+// --- Dashboard widgets (Gladys 5.1+) -----------------------------------------
+// Pull model: the core asks for a content on mount and past its ttl_seconds,
+// and refetches it right after a widget action resolves. The data is read
+// here, the content built by the pure builders of src/widgets.js. A server
+// that does not answer gives a sentence, not an error: the card stays
+// readable and says why.
+gladys.onWidgetGet(WIDGET.NOW_PLAYING, async () => {
+  if (!isConfigured(config)) {
+    return notConfiguredContent();
+  }
+  const ids = gladys.externalIds(server.key, serverPlatformId(config));
+  try {
+    // The same list the poll reads: reused while it is fresh enough.
+    const entries = await readNowPlaying(config);
+    return buildNowPlayingContent({
+      entries,
+      streamsFeature: ids.feature(SERVER_FEATURE.ACTIVE_STREAMS),
+      register: (coverArtId) => covers.register(coverArtId),
+    });
+  } catch (err) {
+    logger.warn(`now_playing widget: ${err.message}`);
+    return unreachableContent(err.message);
+  }
+});
+
+gladys.onWidgetGet(WIDGET.JUKEBOX, async () => {
+  if (!isConfigured(config)) {
+    return notConfiguredContent();
+  }
+  if (!config.jukebox_enabled) {
+    return buildJukeboxContent({ enabled: false });
+  }
+  try {
+    const playlist = await jukeboxControl(config, 'get');
+    return buildJukeboxContent({
+      enabled: true,
+      playlist,
+      register: (coverArtId) => covers.register(coverArtId),
+    });
+  } catch (err) {
+    logger.warn(`jukebox widget: ${err.message}`);
+    return unreachableContent(err.message);
+  }
+});
+
+gladys.onWidgetGet(WIDGET.LIBRARY, async () => {
+  if (!isConfigured(config)) {
+    return notConfiguredContent();
+  }
+  const ids = gladys.externalIds(server.key, serverPlatformId(config));
+  try {
+    if (serverInfo === null) {
+      // The startup check failed or has not run yet: ask now, once.
+      serverInfo = await ping(config);
+    }
+    // readScanStatus swallows a refusal (null): the widget then says so.
+    const scanStatus = await readScanStatus(config);
+    return buildLibraryContent({
+      features: {
+        songs: ids.feature(SERVER_FEATURE.SONG_COUNT),
+        artists: ids.feature(SERVER_FEATURE.ARTIST_COUNT),
+        albums: ids.feature(SERVER_FEATURE.ALBUM_COUNT),
+      },
+      serverInfo,
+      scanStatus,
+    });
+  } catch (err) {
+    logger.warn(`library widget: ${err.message}`);
+    return unreachableContent(err.message);
+  }
+});
+
+gladys.onWidgetAction(WIDGET.JUKEBOX, async (actionKey) => {
+  logger.info(`onWidgetAction <- jukebox ${actionKey}`);
+  return jukebox.widgetAction(gladys, { actionKey, config });
+});
+
+gladys.onWidgetAction(WIDGET.LIBRARY, async (actionKey) => {
+  logger.info(`onWidgetAction <- library ${actionKey}`);
+  return server.widgetAction(gladys, { actionKey, config });
+});
+
+// One handler for every image key: the covers of all widgets, resolved
+// through the registry and fetched at the widget size (raw base64).
+gladys.onWidgetGetImage(async (imageKey) => {
+  logger.debug(`onWidgetGetImage <- ${imageKey}`);
+  return resolveWidgetImage(covers, config, imageKey);
+});
+
 // --- Configuration updated by the user ---------------------------------------
 gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> new configuration received');
@@ -112,6 +226,8 @@ gladys.on('connected', async () => {
  * devices (publishDiscoveredDevices is idempotent: upsert by external_id).
  */
 async function checkServerAndPublish() {
+  // A new server, or none: forget what the previous one answered.
+  serverInfo = null;
   if (!isConfigured(config)) {
     logger.info('Not configured yet: waiting for server URL and credentials');
     await gladys.setConnectionStatus(false, {
@@ -123,6 +239,7 @@ async function checkServerAndPublish() {
 
   try {
     const info = await ping(config);
+    serverInfo = info;
     logger.info(
       `Subsonic server reachable: ${info.type ?? 'subsonic'} ` +
         `${info.serverVersion ?? ''} (API ${info.version})`,

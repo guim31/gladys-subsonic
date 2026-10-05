@@ -20,12 +20,14 @@ import {
 import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
 import { serverPlatformId } from './server.js';
+import { JUKEBOX_ACTION, RANDOM_SONG_COUNT } from '../widgets.js';
 
 const DEVICE_TYPE = 'jukebox';
 
 const logger = createLogger({ name: DEVICE_TYPE });
 
-const FEATURE = {
+/** Feature keys of the jukebox device (the `external_id` suffixes). */
+export const JUKEBOX_FEATURE = {
   PLAY: 'play',
   PAUSE: 'pause',
   PREVIOUS: 'previous',
@@ -33,6 +35,7 @@ const FEATURE = {
   VOLUME: 'volume',
   PLAYBACK_STATE: 'playback-state',
 };
+const FEATURE = JUKEBOX_FEATURE;
 
 export const jukebox = {
   key: DEVICE_TYPE,
@@ -114,15 +117,7 @@ export const jukebox = {
       }
       case DEVICE_FEATURE_TYPES.MUSIC.NEXT:
       case DEVICE_FEATURE_TYPES.MUSIC.PREVIOUS: {
-        // `skip` needs the target index: read the queue first.
-        const playlist = await jukeboxControl(config, 'get');
-        const entries = asArray(playlist.entry);
-        const current = playlist.currentIndex ?? 0;
-        const target = feature.type === DEVICE_FEATURE_TYPES.MUSIC.NEXT ? current + 1 : current - 1;
-        if (target < 0 || (entries.length > 0 && target >= entries.length)) {
-          throw new Error(`No track at position ${target} in the jukebox queue`);
-        }
-        await jukeboxControl(config, 'skip', { index: target });
+        await skipQueue(config, feature.type === DEVICE_FEATURE_TYPES.MUSIC.NEXT ? 1 : -1);
         return;
       }
       case DEVICE_FEATURE_TYPES.MUSIC.VOLUME: {
@@ -137,6 +132,9 @@ export const jukebox = {
         throw new Error(`Jukebox: unsupported command ${feature.type}`);
     }
   },
+
+  // Buttons of the jukebox dashboard widget (hoisted, see below).
+  widgetAction,
 
   async onPoll(gladys, config) {
     const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
@@ -164,23 +162,10 @@ export const jukebox = {
       if (guard) {
         return guard;
       }
-      const count = Math.min(Math.max(Number(fields?.count) || 20, 1), 500);
+      const count = Math.min(Math.max(Number(fields?.count) || RANDOM_SONG_COUNT, 1), 500);
       logger.info(`Action jukebox_play_random -> queuing ${count} random songs`);
-
-      const songs = await getRandomSongs(config, count);
-      if (songs.length === 0) {
-        return {
-          en: 'The library returned no songs.',
-          fr: "La bibliothèque n'a renvoyé aucun morceau.",
-        };
-      }
-      await jukeboxControl(config, 'clear');
-      await jukeboxControl(config, 'add', { id: songs.map((song) => song.id) });
-      await jukeboxControl(config, 'start');
-      return {
-        en: `Playing ${songs.length} random songs on the jukebox.`,
-        fr: `Lecture de ${songs.length} morceaux aléatoires sur le jukebox.`,
-      };
+      const { queued } = await playRandom(config, count);
+      return randomMessage(queued);
     },
 
     async jukebox_play_playlist(_gladys, { fields, config }) {
@@ -220,6 +205,116 @@ export const jukebox = {
     },
   },
 };
+
+/**
+ * A button of the jukebox widget was tapped: run the command, then publish
+ * the playback state Gladys shows, as onSetValue does. Resolves the toast
+ * message, when there is something to say.
+ * @param {object} gladys
+ * @param {{ actionKey: string, config: object }} input
+ */
+async function widgetAction(gladys, { actionKey, config }) {
+  if (jukeboxGuard(config)) {
+    // The widget itself tells the user what to enable: a tap that reaches
+    // this point comes from a content built before the config changed. A
+    // thrown message becomes a toast of 200 characters at most: keep it short.
+    throw new Error('Jukebox not enabled. / Jukebox non activé.');
+  }
+  const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
+  // The command already ran: a refused publication (the jukebox device was
+  // never added to Gladys, so the core answers 4xx) must not turn a
+  // successful tap into a red toast.
+  const publishPlayback = async (status, expected) => {
+    const state = typeof status?.playing === 'boolean' ? (status.playing ? 1 : 0) : expected;
+    try {
+      await gladys.publishState(ids.feature(FEATURE.PLAYBACK_STATE), state);
+    } catch (err) {
+      logger.warn(`Playback state not published after a widget action (${err.message})`);
+    }
+  };
+
+  switch (actionKey) {
+    case JUKEBOX_ACTION.TOGGLE: {
+      // The content showed pause or play from the state at render time; the
+      // state at tap time decides, so a stale card never does the opposite.
+      const before = await jukeboxControl(config, 'status');
+      const status = await jukeboxControl(config, before.playing ? 'stop' : 'start');
+      await publishPlayback(status, before.playing ? 0 : 1);
+      return undefined;
+    }
+    case JUKEBOX_ACTION.PREVIOUS:
+    case JUKEBOX_ACTION.NEXT: {
+      // `skip` moves to the track and starts playing it.
+      const status = await skipQueue(config, actionKey === JUKEBOX_ACTION.NEXT ? 1 : -1);
+      await publishPlayback(status, 1);
+      return undefined;
+    }
+    case JUKEBOX_ACTION.RANDOM: {
+      const { queued, status } = await playRandom(config, RANDOM_SONG_COUNT);
+      if (queued > 0) {
+        await publishPlayback(status, 1);
+      }
+      return randomMessage(queued);
+    }
+    default:
+      throw new Error(`Unknown widget action ${actionKey}`);
+  }
+}
+
+/**
+ * Move the jukebox to the previous or next track of its queue.
+ * @param {object} config
+ * @param {1|-1} direction
+ * @returns {Promise<object>} the jukebox status after the skip
+ * @throws when the queue has no track in that direction
+ */
+export async function skipQueue(config, direction) {
+  // `skip` needs the target index: read the queue first.
+  const playlist = await jukeboxControl(config, 'get');
+  const entries = asArray(playlist.entry);
+  const current = playlist.currentIndex ?? 0;
+  const target = current + direction;
+  if (target < 0 || (entries.length > 0 && target >= entries.length)) {
+    throw new Error(`No track at position ${target} in the jukebox queue`);
+  }
+  return jukeboxControl(config, 'skip', { index: target });
+}
+
+/**
+ * Replace the jukebox queue with random songs and start playing.
+ * @param {object} config
+ * @param {number} count
+ * @returns {Promise<{ queued: number, status: object|null }>} how many songs
+ *   were queued (0 when the library returned none: the queue is untouched)
+ *   and the jukebox status after the start
+ */
+export async function playRandom(config, count) {
+  const songs = await getRandomSongs(config, count);
+  if (songs.length === 0) {
+    return { queued: 0, status: null };
+  }
+  await jukeboxControl(config, 'clear');
+  await jukeboxControl(config, 'add', { id: songs.map((song) => song.id) });
+  const status = await jukeboxControl(config, 'start');
+  return { queued: songs.length, status };
+}
+
+/**
+ * The message of a random playback, for the action and the widget alike.
+ * @param {number} queued
+ */
+function randomMessage(queued) {
+  if (queued === 0) {
+    return {
+      en: 'The library returned no songs.',
+      fr: "La bibliothèque n'a renvoyé aucun morceau.",
+    };
+  }
+  return {
+    en: `Playing ${queued} random songs on the jukebox.`,
+    fr: `Lecture de ${queued} morceaux aléatoires sur le jukebox.`,
+  };
+}
 
 /**
  * Common pre-checks of the jukebox actions. Returns a user message when the

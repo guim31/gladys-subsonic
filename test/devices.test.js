@@ -12,8 +12,10 @@ import {
   serverPlatformId,
   formatNowPlaying,
   resetLibraryCache,
+  readNowPlaying,
+  NOW_PLAYING_MAX_AGE_MS,
 } from '../src/devices/server.js';
-import { jukebox } from '../src/devices/jukebox.js';
+import { jukebox, skipQueue, playRandom } from '../src/devices/jukebox.js';
 import { normalizeConfig } from '../src/config.js';
 import { createFakeGladys, mockSubsonicFetch } from './helpers/fakeGladys.js';
 
@@ -590,4 +592,261 @@ test('the jukebox actions refuse to run while the toggle is off', async () => {
   });
   assert.match(message.en, /Enable the jukebox/);
   assert.ok(message.fr, 'the message is multi-language');
+});
+
+// --- Dashboard widgets: the data behind them and their buttons ---------------
+
+test('the now playing list read by the poll is reused by the widget while fresh', async () => {
+  resetLibraryCache();
+  const fake = createFakeGladys();
+  const mock = mockSubsonicFetch(LIBRARY_ROUTES);
+  const realNow = Date.now;
+  try {
+    await server.onPoll(fake, baseConfig);
+    const entries = await readNowPlaying(baseConfig);
+    assert.equal(entries.length, 2);
+    assert.equal(
+      mock.calls.filter((c) => c.endpoint === 'getNowPlaying').length,
+      1,
+      'the widget reuses what the poll just read',
+    );
+    // Past the widget freshness: read again.
+    Date.now = () => realNow() + NOW_PLAYING_MAX_AGE_MS + 1;
+    await readNowPlaying(baseConfig);
+    assert.equal(mock.calls.filter((c) => c.endpoint === 'getNowPlaying').length, 2);
+    // ...and the poll always reads, then refreshes the cache for the widget.
+    await server.onPoll(fake, baseConfig);
+    await readNowPlaying(baseConfig);
+    assert.equal(mock.calls.filter((c) => c.endpoint === 'getNowPlaying').length, 3);
+  } finally {
+    Date.now = realNow;
+    mock.restore();
+  }
+  // Another server never gets the cached list of the first one.
+  resetLibraryCache();
+  const other = mockSubsonicFetch({ getNowPlaying: {} });
+  try {
+    assert.deepEqual(
+      await readNowPlaying(normalizeConfig({ ...baseConfig, server_url: 'http://other' })),
+      [],
+    );
+  } finally {
+    other.restore();
+  }
+});
+
+test('the library widget scan button starts a scan and reports it', async () => {
+  const mock = mockSubsonicFetch({ startScan: { scanStatus: { scanning: true, count: 12 } } });
+  try {
+    const message = await server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig });
+    assert.match(message.fr, /^Scan de la bibliothèque en cours \(12 éléments/);
+    assert.ok(message.en.length <= 200 && message.fr.length <= 200, 'a toast is 200 chars max');
+  } finally {
+    mock.restore();
+  }
+  // A refusal thrown from the widget is a toast too: short, in both
+  // languages, where the configuration button keeps its long explanation.
+  const refused = mockSubsonicFetch({
+    startScan: { status: 'failed', error: { code: 50, message: 'User is not authorized' } },
+  });
+  try {
+    await assert.rejects(
+      () => server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig }),
+      (err) =>
+        err.message.length <= 200 &&
+        /administrators only/.test(err.message) &&
+        /réservé aux administrateurs/.test(err.message) &&
+        err.cause?.code === 50,
+    );
+    await assert.rejects(
+      () => server.actions.start_scan(gladys, { config: baseConfig }),
+      (err) => err.message.length > 200 && /reserved to administrators/.test(err.message),
+    );
+  } finally {
+    refused.restore();
+  }
+  const failed = mockSubsonicFetch({
+    startScan: { status: 'failed', error: { code: 0, message: 'boom' } },
+  });
+  try {
+    await assert.rejects(
+      () => server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig }),
+      /Scan not started: Subsonic error 0: boom \/ Scan non lancé/,
+    );
+  } finally {
+    failed.restore();
+  }
+  await assert.rejects(
+    () => server.widgetAction(gladys, { actionKey: 'bogus', config: baseConfig }),
+    /Unknown widget action/,
+  );
+  await assert.rejects(
+    () => server.widgetAction(gladys, { actionKey: 'scan', config: normalizeConfig() }),
+    /not configured/,
+  );
+});
+
+/** A jukebox server stub recording the actions, with a queue of three tracks. */
+function jukeboxServer({ playing = true, songs = 3 } = {}) {
+  const actions = [];
+  const state = { playing, currentIndex: 1 };
+  const mock = mockSubsonicFetch({
+    jukeboxControl: (url) => {
+      // Only the jukebox parameters, not the auth ones.
+      const params = Object.fromEntries(
+        [...url.searchParams].filter(([key]) => ['action', 'index', 'id', 'gain'].includes(key)),
+      );
+      actions.push(params);
+      switch (params.action) {
+        case 'get':
+          return {
+            jukeboxPlaylist: {
+              ...state,
+              entry: Array.from({ length: songs }, (_, i) => ({ id: i })),
+            },
+          };
+        case 'start':
+          state.playing = true;
+          break;
+        case 'stop':
+          state.playing = false;
+          break;
+        case 'skip':
+          state.playing = true;
+          state.currentIndex = Number(params.index);
+          break;
+        default:
+          break;
+      }
+      return { jukeboxStatus: { ...state, gain: 0.5 } };
+    },
+    getRandomSongs: { randomSongs: { song: [{ id: 'r1' }, { id: 'r2' }] } },
+  });
+  return { actions, state, restore: mock.restore };
+}
+
+test('jukebox widget toggle reads the state at tap time and publishes the new one', async () => {
+  const fake = createFakeGladys();
+  const srv = jukeboxServer({ playing: true });
+  try {
+    await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
+    assert.deepEqual(
+      srv.actions.map((a) => a.action),
+      ['status', 'stop'],
+    );
+    await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
+    assert.deepEqual(srv.actions.map((a) => a.action).slice(2), ['status', 'start']);
+  } finally {
+    srv.restore();
+  }
+  assert.deepEqual(fake.published, [
+    { featureExternalId: 'jukebox:music-example-com:playback-state', state: 0 },
+    { featureExternalId: 'jukebox:music-example-com:playback-state', state: 1 },
+  ]);
+});
+
+test('jukebox widget previous/next skip in the queue, refused past its ends', async () => {
+  const fake = createFakeGladys();
+  const srv = jukeboxServer();
+  try {
+    await jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig });
+    assert.deepEqual(srv.actions.at(-1), { action: 'skip', index: '2' });
+    await assert.rejects(
+      () => jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig }),
+      /No track at position 3/,
+    );
+    await jukebox.widgetAction(fake, { actionKey: 'previous', config: jukeboxConfig });
+    assert.deepEqual(srv.actions.at(-1), { action: 'skip', index: '1' });
+    // The device features share the same helper.
+    srv.state.currentIndex = 0;
+    await assert.rejects(() => skipQueue(jukeboxConfig, -1), /No track at position -1/);
+  } finally {
+    srv.restore();
+  }
+  // A skip starts playing: the state Gladys shows follows.
+  assert.deepEqual(
+    fake.published.map((p) => p.state),
+    [1, 1],
+  );
+});
+
+test('jukebox widget shuffle queues random songs, like the configuration action', async () => {
+  const fake = createFakeGladys();
+  const srv = jukeboxServer({ playing: false });
+  try {
+    const message = await jukebox.widgetAction(fake, {
+      actionKey: 'random',
+      config: jukeboxConfig,
+    });
+    assert.equal(message.fr, 'Lecture de 2 morceaux aléatoires sur le jukebox.');
+    assert.deepEqual(
+      srv.actions.map((a) => a.action),
+      ['clear', 'add', 'start'],
+    );
+    assert.deepEqual(srv.actions[1], { action: 'add', id: 'r2' }, 'the add call carries the ids');
+    assert.deepEqual(
+      await jukebox.actions.jukebox_play_random(fake, { fields: {}, config: jukeboxConfig }),
+      message,
+    );
+  } finally {
+    srv.restore();
+  }
+  assert.deepEqual(fake.published[0], {
+    featureExternalId: 'jukebox:music-example-com:playback-state',
+    state: 1,
+  });
+
+  // An empty library leaves the queue alone and says so.
+  const empty = mockSubsonicFetch({ getRandomSongs: {} });
+  try {
+    assert.deepEqual(await playRandom(jukeboxConfig, 20), { queued: 0, status: null });
+    const message = await jukebox.widgetAction(fake, {
+      actionKey: 'random',
+      config: jukeboxConfig,
+    });
+    assert.match(message.en, /no songs/);
+    assert.equal(empty.calls.length, 2, 'getRandomSongs only, no clear/add/start');
+  } finally {
+    empty.restore();
+  }
+});
+
+test('a refused state publication never fails a jukebox button that acted', async () => {
+  // The jukebox device was never added to Gladys: the core refuses the
+  // state (the SDK throws), but the jukebox DID start playing.
+  const fake = createFakeGladys();
+  fake.publishState = async () => {
+    throw new Error('HTTP 404: device feature not found');
+  };
+  const srv = jukeboxServer({ playing: false });
+  try {
+    await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
+    assert.deepEqual(
+      srv.actions.map((a) => a.action),
+      ['status', 'start'],
+    );
+    await jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig });
+    const message = await jukebox.widgetAction(fake, {
+      actionKey: 'random',
+      config: jukeboxConfig,
+    });
+    assert.match(message.fr, /^Lecture de 2 morceaux/);
+  } finally {
+    srv.restore();
+  }
+});
+
+test('jukebox widget buttons refuse to run while the jukebox is disabled', async () => {
+  const fake = createFakeGladys();
+  await assert.rejects(
+    () => jukebox.widgetAction(fake, { actionKey: 'toggle', config: baseConfig }),
+    (err) =>
+      err.message.length <= 200 &&
+      /Jukebox not enabled\. \/ Jukebox non activé\./.test(err.message),
+  );
+  await assert.rejects(
+    () => jukebox.widgetAction(fake, { actionKey: 'bogus', config: jukeboxConfig }),
+    /Unknown widget action/,
+  );
+  assert.deepEqual(fake.published, []);
 });
