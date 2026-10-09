@@ -79,7 +79,7 @@ server" device: add it to Gladys for them to show a value.
 
 - **Now playing** — the number of streams in progress (the tile follows the
   sensor live) and one row per session the server lists: title, artist ·
-  album, the cover, and as a badge the player or listener name, green when
+  album, the cover, and as a badge the listener name (or else the player name), green when
   the session really plays, grey when it is paused or stopped (the server
   keeps a session listed for a while after it stops). Eight rows at most,
   the active streams first. Nothing playing: "Nothing is playing right now."

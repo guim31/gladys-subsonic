@@ -119,7 +119,9 @@ test('now_playing: the live streams tile and one row per entry, playing first', 
   );
   const [playing, bare, paused] = list.items;
   assert.equal(playing.subtitle, 'Radiohead · OK Computer');
-  assert.deepEqual(playing.badge, { text: 'Kitchen', color: 'success' });
+  // Who listens in the badge, the player in the detail of the row.
+  assert.deepEqual(playing.badge, { text: 'guilhem', color: 'success' });
+  assert.deepEqual(playing.description, { en: 'Player: Kitchen', fr: 'Lecteur : Kitchen' });
   assert.match(playing.image, IMAGE_KEY);
   assert.equal(playing.image, coverImageKey('al-OK1'));
   assert.equal(paused.badge.color, 'neutral');
@@ -138,6 +140,18 @@ test('now_playing: a listener without a player, a badge within 16 characters', (
   const [item] = content.components[1].items;
   assert.equal(item.badge.text.length, 16);
   assert.equal(item.badge.text, 'a-very-long-use…');
+});
+
+test('now_playing: a player without a listener name goes in the badge', () => {
+  const content = buildNowPlayingContent({
+    entries: [entry({ username: '  ', playerName: 'Symfonium' })],
+    streamsFeature,
+    register,
+  });
+  assert.deepEqual(validateWidgetContent(content), []);
+  const [item] = content.components[1].items;
+  assert.equal(item.badge.text, 'Symfonium');
+  assert.equal(item.description, undefined, 'no detail repeating the badge');
 });
 
 test('now_playing: at most 8 rows, then an explicit empty state', () => {
