@@ -22,7 +22,7 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
   `gladys.externalIds('server', serverPlatformId(config)).feature(clé)`) : elles ne vivent que si
   l'appareil « Serveur Subsonic » a été ajouté à Gladys.
 - **`now_playing` liste toutes les sessions de `getNowPlaying`**, les lectures réelles
-  (`isPlaying`) d'abord, badge `success` pour elles et `neutral` pour les autres ; le capteur
+  (`isPlaying`) d'abord, badge `success` pour elles et `neutral` pour les autres (le badge porte l'auditeur, le lecteur va dans la `description`, ouverte d'un clic) ; le capteur
   `active-streams`, lui, ne compte que les lectures réelles. La liste lue par le poll est mise
   en cache 30 s (`readNowPlaying` dans `server.js`) : le widget la réutilise, sinon il
   l'appelle.

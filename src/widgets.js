@@ -3,8 +3,8 @@
 //
 //   - now_playing : the number of streams (a live tile bound to the server
 //                   sensor) and one row per entry of the server's now playing
-//                   list, with the cover, who listens and whether it really
-//                   plays;
+//                   list, with the cover, who listens (badge), on which
+//                   player (detail) and whether it really plays;
 //   - jukebox     : the server-side jukebox as a remote: the cover and the
 //                   title of the current track, its state, the volume, the
 //                   position in the queue, and the play/pause, previous, next
@@ -109,6 +109,15 @@ export function fit(text, max) {
 }
 
 /**
+ * A trimmed string, or an empty one when the value is not a string.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function trimmed(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
  * `Artist · Album`, whichever of the two the entry carries.
  * @param {object} entry a song entry of the API
  * @returns {string} may be empty
@@ -186,11 +195,21 @@ export function buildNowPlayingContent({ entries, streamsFeature, register }) {
       if (subtitle) {
         item.subtitle = fit(subtitle, 60);
       }
-      const who = entry.playerName || entry.username;
+      // The badge tells who listens; the player, when the server names it,
+      // goes in the detail opened by a tap on the row.
+      const listener = trimmed(entry.username);
+      const player = trimmed(entry.playerName);
+      const who = listener || player;
       if (who) {
         item.badge = {
           text: fit(who, 16),
           color: isPlaying(entry) ? WIDGET_COLORS.SUCCESS : WIDGET_COLORS.NEUTRAL,
+        };
+      }
+      if (listener && player) {
+        item.description = {
+          en: fit(`Player: ${player}`, 200),
+          fr: fit(`Lecteur : ${player}`, 200),
         };
       }
       if (entry.coverArt) {

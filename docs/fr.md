@@ -87,7 +87,7 @@ qu'elles affichent une valeur.
 
 - **En écoute** — le nombre de lectures en cours (la tuile suit le capteur en
   direct) et une ligne par session que le serveur liste : titre, artiste ·
-  album, la pochette, et en badge le nom du lecteur ou de l'auditeur, vert
+  album, la pochette, et en badge le nom de l'auditeur (à défaut, celui du lecteur), vert
   quand la session joue réellement, gris quand elle est en pause ou arrêtée
   (le serveur garde une session un moment après l'arrêt). Huit lignes au
   plus, les lectures actives en premier. Sans lecture : « Rien en écoute. »
