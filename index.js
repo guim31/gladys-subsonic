@@ -41,6 +41,7 @@ import {
   unreachableContent,
 } from './src/widgets.js';
 import { createCoverRegistry, resolveWidgetImage } from './src/covers.js';
+import { TEXT, MESSAGES } from './src/i18n.js';
 
 const gladys = new GladysIntegration();
 
@@ -211,12 +212,7 @@ gladys.on('connected', async () => {
     await checkServerAndPublish();
   } catch (err) {
     logger.error('Post-connection initialization failed', err);
-    await gladys
-      .setConnectionStatus(false, {
-        en: 'Initialization failed, check the integration logs.',
-        fr: "L'initialisation a échoué, consultez les logs de l'intégration.",
-      })
-      .catch(() => {});
+    await gladys.setConnectionStatus(false, TEXT.initFailed).catch(() => {});
   }
 });
 
@@ -230,10 +226,7 @@ async function checkServerAndPublish() {
   serverInfo = null;
   if (!isConfigured(config)) {
     logger.info('Not configured yet: waiting for server URL and credentials');
-    await gladys.setConnectionStatus(false, {
-      en: 'Fill in the server URL, username and password.',
-      fr: "Renseignez l'URL du serveur, l'utilisateur et le mot de passe.",
-    });
+    await gladys.setConnectionStatus(false, TEXT.notConfiguredStatus);
     return;
   }
 
@@ -246,10 +239,7 @@ async function checkServerAndPublish() {
     );
   } catch (err) {
     logger.error(`Subsonic server check failed: ${err.message}`);
-    await gladys.setConnectionStatus(false, {
-      en: `Cannot reach the Subsonic server: ${err.message}`,
-      fr: `Impossible de joindre le serveur Subsonic : ${err.message}`,
-    });
+    await gladys.setConnectionStatus(false, MESSAGES.serverUnreachable(err.message));
     return;
   }
 
@@ -261,10 +251,7 @@ async function checkServerAndPublish() {
     await gladys.setConnectionStatus(true);
   } catch (err) {
     logger.error(`Publishing the devices failed: ${err.message}`);
-    await gladys.setConnectionStatus(false, {
-      en: `Server reachable, but publishing the devices failed: ${err.message}`,
-      fr: `Serveur joignable, mais la publication des appareils a échoué : ${err.message}`,
-    });
+    await gladys.setConnectionStatus(false, MESSAGES.publishFailed(err.message));
   }
 }
 

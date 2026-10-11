@@ -4,7 +4,9 @@
   "name": "Subsonic",
   "description": {
     "en": "Link Gladys with a Subsonic-compatible music server: Navidrome, Airsonic, Gonic...",
-    "fr": "Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic..."
+    "fr": "Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic...",
+    "de": "Verbinde Gladys mit einem Subsonic-kompatiblen Musikserver: Navidrome, Airsonic, Gonic...",
+    "es": "Conecte Gladys a un servidor de música compatible con Subsonic: Navidrome, Airsonic, Gonic..."
   },
   "version": "1.1.1",
   "docker_image": "ghcr.io/guim31/gladys-subsonic:1.1.1",
@@ -18,25 +20,33 @@
       "type": "section",
       "label": {
         "en": "Server connection",
-        "fr": "Connexion au serveur"
+        "fr": "Connexion au serveur",
+        "de": "Verbindung zum Server",
+        "es": "Conexión al servidor"
       },
       "description": {
         "en": "Works with any server implementing the Subsonic API (Navidrome, Airsonic-Advanced, Gonic...). Use a dedicated user account if you can. The URL is the root of the server, e.g. https://music.example.com or http://192.168.1.10:4533.",
-        "fr": "Fonctionne avec tout serveur implémentant l'API Subsonic (Navidrome, Airsonic-Advanced, Gonic...). Utilisez si possible un compte utilisateur dédié. L'URL est la racine du serveur, ex. https://music.example.com ou http://192.168.1.10:4533."
+        "fr": "Fonctionne avec tout serveur implémentant l'API Subsonic (Navidrome, Airsonic-Advanced, Gonic...). Utilisez si possible un compte utilisateur dédié. L'URL est la racine du serveur, ex. https://music.example.com ou http://192.168.1.10:4533.",
+        "de": "Funktioniert mit jedem Server, der die Subsonic-API umsetzt (Navidrome, Airsonic-Advanced, Gonic...). Verwende nach Möglichkeit ein eigenes Benutzerkonto. Die URL ist die Wurzel des Servers, z. B. https://music.example.com oder http://192.168.1.10:4533.",
+        "es": "Funciona con cualquier servidor que implemente la API de Subsonic (Navidrome, Airsonic-Advanced, Gonic...). Si es posible, utilice una cuenta de usuario dedicada. La URL es la raíz del servidor, p. ej. https://music.example.com o http://192.168.1.10:4533."
       },
       "links": [
         {
           "url": "https://www.subsonic.org/pages/api.jsp",
           "label": {
             "en": "Subsonic API documentation",
-            "fr": "Documentation de l'API Subsonic"
+            "fr": "Documentation de l'API Subsonic",
+            "de": "Dokumentation der Subsonic-API",
+            "es": "Documentación de la API de Subsonic"
           }
         },
         {
           "url": "https://www.navidrome.org/docs/",
           "label": {
             "en": "Navidrome documentation",
-            "fr": "Documentation Navidrome"
+            "fr": "Documentation Navidrome",
+            "de": "Navidrome-Dokumentation",
+            "es": "Documentación de Navidrome"
           }
         }
       ]
@@ -46,11 +56,15 @@
       "type": "string",
       "label": {
         "en": "Server URL",
-        "fr": "URL du serveur"
+        "fr": "URL du serveur",
+        "de": "Server-URL",
+        "es": "URL del servidor"
       },
       "description": {
         "en": "Root URL of the Subsonic server, without /rest.",
-        "fr": "URL racine du serveur Subsonic, sans /rest."
+        "fr": "URL racine du serveur Subsonic, sans /rest.",
+        "de": "Wurzel-URL des Subsonic-Servers, ohne /rest.",
+        "es": "URL raíz del servidor Subsonic, sin /rest."
       },
       "required": true
     },
@@ -59,7 +73,9 @@
       "type": "string",
       "label": {
         "en": "Username",
-        "fr": "Utilisateur"
+        "fr": "Utilisateur",
+        "de": "Benutzername",
+        "es": "Nombre de usuario"
       },
       "required": true
     },
@@ -68,7 +84,9 @@
       "type": "secret",
       "label": {
         "en": "Password",
-        "fr": "Mot de passe"
+        "fr": "Mot de passe",
+        "de": "Passwort",
+        "es": "Contraseña"
       },
       "required": true
     },
@@ -77,11 +95,15 @@
       "type": "select",
       "label": {
         "en": "Authentication method",
-        "fr": "Méthode d'authentification"
+        "fr": "Méthode d'authentification",
+        "de": "Authentifizierungsmethode",
+        "es": "Método de autenticación"
       },
       "description": {
         "en": "Token (md5 + salt) is supported by every modern server. Use legacy only for pre-1.13 servers or LDAP users.",
-        "fr": "Le jeton (md5 + sel) est géré par tous les serveurs modernes. N'utilisez legacy que pour les serveurs pré-1.13 ou les comptes LDAP."
+        "fr": "Le jeton (md5 + sel) est géré par tous les serveurs modernes. N'utilisez legacy que pour les serveurs pré-1.13 ou les comptes LDAP.",
+        "de": "Das Token (md5 + Salt) wird von allen modernen Servern unterstützt. Verwende Legacy nur für Server vor 1.13 oder LDAP-Konten.",
+        "es": "El token (md5 + sal) es compatible con todos los servidores modernos. Utilice legacy solo para servidores anteriores a 1.13 o cuentas LDAP."
       },
       "required": false,
       "default": "token",
@@ -90,14 +112,18 @@
           "value": "token",
           "label": {
             "en": "Token (recommended)",
-            "fr": "Jeton (recommandé)"
+            "fr": "Jeton (recommandé)",
+            "de": "Token (empfohlen)",
+            "es": "Token (recomendado)"
           }
         },
         {
           "value": "legacy",
           "label": {
             "en": "Legacy (obfuscated password)",
-            "fr": "Legacy (mot de passe obfusqué)"
+            "fr": "Legacy (mot de passe obfusqué)",
+            "de": "Legacy (verschleiertes Passwort)",
+            "es": "Legacy (contraseña ofuscada)"
           }
         }
       ]
@@ -107,11 +133,15 @@
       "type": "number",
       "label": {
         "en": "Refresh interval (s)",
-        "fr": "Intervalle de rafraîchissement (s)"
+        "fr": "Intervalle de rafraîchissement (s)",
+        "de": "Aktualisierungsintervall (s)",
+        "es": "Intervalo de actualización (s)"
       },
       "description": {
         "en": "How often the server sensors are polled, in seconds. Gladys only supports 10, 15, 30 or 60 s: the value is snapped to the closest one.",
-        "fr": "Fréquence d'interrogation des capteurs du serveur, en secondes. Gladys ne gère que 10, 15, 30 ou 60 s : la valeur est alignée sur la plus proche."
+        "fr": "Fréquence d'interrogation des capteurs du serveur, en secondes. Gladys ne gère que 10, 15, 30 ou 60 s : la valeur est alignée sur la plus proche.",
+        "de": "Wie oft die Sensoren des Servers abgefragt werden, in Sekunden. Gladys unterstützt nur 10, 15, 30 oder 60 s: Der Wert wird auf den nächstgelegenen gerundet.",
+        "es": "Frecuencia de consulta de los sensores del servidor, en segundos. Gladys solo admite 10, 15, 30 o 60 s: el valor se ajusta al más cercano."
       },
       "required": false,
       "default": 60,
@@ -123,18 +153,24 @@
       "type": "section",
       "label": {
         "en": "Jukebox (server-side playback)",
-        "fr": "Jukebox (lecture côté serveur)"
+        "fr": "Jukebox (lecture côté serveur)",
+        "de": "Jukebox (Wiedergabe auf dem Server)",
+        "es": "Jukebox (reproducción en el servidor)"
       },
       "description": {
         "en": "The jukebox plays music on the machine hosting the server. It must also be enabled server-side: in Navidrome, set Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) and make sure the host has an audio output.",
-        "fr": "Le jukebox joue la musique sur la machine qui héberge le serveur. Il doit aussi être activé côté serveur : dans Navidrome, réglez Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) et vérifiez que l'hôte a une sortie audio."
+        "fr": "Le jukebox joue la musique sur la machine qui héberge le serveur. Il doit aussi être activé côté serveur : dans Navidrome, réglez Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) et vérifiez que l'hôte a une sortie audio.",
+        "de": "Die Jukebox spielt Musik auf dem Rechner ab, auf dem der Server läuft. Auf dem Server muss sie ebenfalls aktiviert sein: Setze in Navidrome Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) und prüfe, ob der Rechner einen Audioausgang hat.",
+        "es": "La jukebox reproduce la música en la máquina que aloja el servidor. También debe activarse en el servidor: en Navidrome, configure Jukebox.Enabled = true (ND_JUKEBOX_ENABLED=true) y compruebe que la máquina tiene una salida de audio."
       },
       "links": [
         {
           "url": "https://www.navidrome.org/docs/usage/jukebox/",
           "label": {
             "en": "Navidrome jukebox mode",
-            "fr": "Mode jukebox de Navidrome"
+            "fr": "Mode jukebox de Navidrome",
+            "de": "Jukebox-Modus von Navidrome",
+            "es": "Modo jukebox de Navidrome"
           }
         }
       ]
@@ -144,7 +180,9 @@
       "type": "boolean",
       "label": {
         "en": "Enable the jukebox device",
-        "fr": "Activer l'appareil jukebox"
+        "fr": "Activer l'appareil jukebox",
+        "de": "Jukebox-Gerät aktivieren",
+        "es": "Activar el dispositivo jukebox"
       },
       "required": false,
       "default": false
@@ -155,7 +193,9 @@
       "key": "test_connection",
       "label": {
         "en": "Test the connection",
-        "fr": "Tester la connexion"
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar la conexión"
       },
       "timeout_seconds": 30
     },
@@ -163,7 +203,9 @@
       "key": "start_scan",
       "label": {
         "en": "Scan the music library",
-        "fr": "Scanner la bibliothèque musicale"
+        "fr": "Scanner la bibliothèque musicale",
+        "de": "Musikbibliothek scannen",
+        "es": "Analizar la biblioteca musical"
       },
       "timeout_seconds": 30
     },
@@ -171,7 +213,9 @@
       "key": "jukebox_play_random",
       "label": {
         "en": "Jukebox: play random songs",
-        "fr": "Jukebox : lecture aléatoire"
+        "fr": "Jukebox : lecture aléatoire",
+        "de": "Jukebox: Zufallswiedergabe",
+        "es": "Jukebox: reproducción aleatoria"
       },
       "timeout_seconds": 30,
       "fields": [
@@ -180,7 +224,9 @@
           "type": "number",
           "label": {
             "en": "Number of songs",
-            "fr": "Nombre de morceaux"
+            "fr": "Nombre de morceaux",
+            "de": "Anzahl der Titel",
+            "es": "Número de canciones"
           },
           "required": false,
           "default": 20,
@@ -193,7 +239,9 @@
       "key": "jukebox_play_playlist",
       "label": {
         "en": "Jukebox: play a playlist",
-        "fr": "Jukebox : jouer une playlist"
+        "fr": "Jukebox : jouer une playlist",
+        "de": "Jukebox: Playlist abspielen",
+        "es": "Jukebox: reproducir una lista"
       },
       "timeout_seconds": 30,
       "fields": [
@@ -202,7 +250,9 @@
           "type": "string",
           "label": {
             "en": "Playlist name",
-            "fr": "Nom de la playlist"
+            "fr": "Nom de la playlist",
+            "de": "Name der Playlist",
+            "es": "Nombre de la lista de reproducción"
           },
           "required": true
         }
@@ -214,11 +264,15 @@
       "key": "now_playing",
       "label": {
         "en": "Now playing",
-        "fr": "En écoute"
+        "fr": "En écoute",
+        "de": "Läuft gerade",
+        "es": "En reproducción"
       },
       "description": {
         "en": "The streams in progress: title, artist, album, listener, with the cover.",
-        "fr": "Les lectures en cours : titre, artiste, album, auditeur, avec la pochette."
+        "fr": "Les lectures en cours : titre, artiste, album, auditeur, avec la pochette.",
+        "de": "Die laufenden Wiedergaben: Titel, Interpret, Album, Hörer, mit dem Cover.",
+        "es": "Las reproducciones en curso: título, artista, álbum, oyente, con la carátula."
       },
       "icon": "headphones"
     },
@@ -226,11 +280,15 @@
       "key": "jukebox",
       "label": {
         "en": "Jukebox",
-        "fr": "Jukebox"
+        "fr": "Jukebox",
+        "de": "Jukebox",
+        "es": "Jukebox"
       },
       "description": {
         "en": "The server-side jukebox as a remote: cover, track, state, volume, buttons.",
-        "fr": "Le jukebox côté serveur en télécommande : pochette, morceau, état, volume, boutons."
+        "fr": "Le jukebox côté serveur en télécommande : pochette, morceau, état, volume, boutons.",
+        "de": "Die Jukebox des Servers als Fernbedienung: Cover, Titel, Status, Lautstärke, Tasten.",
+        "es": "La jukebox del servidor como mando: carátula, canción, estado, volumen, botones."
       },
       "icon": "speaker",
       "action_timeout_seconds": 20
@@ -239,11 +297,15 @@
       "key": "library",
       "label": {
         "en": "Library",
-        "fr": "Bibliothèque"
+        "fr": "Bibliothèque",
+        "de": "Bibliothek",
+        "es": "Biblioteca"
       },
       "description": {
         "en": "Songs, artists and albums counted, the server identity, the scan status and a scan button.",
-        "fr": "Morceaux, artistes et albums comptés, l'identité du serveur, l'état du scan et un bouton."
+        "fr": "Morceaux, artistes et albums comptés, l'identité du serveur, l'état du scan et un bouton.",
+        "de": "Anzahl der Titel, Interpreten und Alben, Server, Scan-Status und eine Scan-Taste.",
+        "es": "Canciones, artistas y álbumes contados, el servidor, el estado del análisis y un botón."
       },
       "icon": "music",
       "action_timeout_seconds": 30

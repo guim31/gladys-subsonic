@@ -29,7 +29,8 @@ import {
   isPlaying,
 } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
-import { LIBRARY_ACTION } from '../widgets.js';
+import { LIBRARY_ACTION, fit } from '../widgets.js';
+import { TEXT, MESSAGES, thrown } from '../i18n.js';
 
 const DEVICE_TYPE = 'server';
 
@@ -434,29 +435,19 @@ export const server = {
   actions: {
     async test_connection(_gladys, { config }) {
       if (!isConfigured(config)) {
-        return {
-          en: 'Fill in the server URL, username and password first.',
-          fr: "Renseignez d'abord l'URL du serveur, l'utilisateur et le mot de passe.",
-        };
+        return TEXT.notConfiguredFirst;
       }
       logger.info('Action test_connection -> pinging the server');
       const info = await ping(config);
       // OpenSubsonic servers (Navidrome...) identify themselves in the ping.
-      const serverName = info.type
-        ? `${info.type} ${info.serverVersion ?? ''}`.trim()
-        : 'Subsonic-compatible server';
-      return {
-        en: `Connected to ${serverName} (Subsonic API ${info.version}).`,
-        fr: `Connecté à ${serverName} (API Subsonic ${info.version}).`,
-      };
+      return info.type
+        ? MESSAGES.connected(`${info.type} ${info.serverVersion ?? ''}`.trim(), info.version)
+        : MESSAGES.connectedUnnamed(info.version);
     },
 
     async start_scan(_gladys, { config }) {
       if (!isConfigured(config)) {
-        return {
-          en: 'Fill in the server URL, username and password first.',
-          fr: "Renseignez d'abord l'URL du serveur, l'utilisateur et le mot de passe.",
-        };
+        return TEXT.notConfiguredFirst;
       }
       logger.info('Action start_scan -> starting a library scan');
       return runScan(config);
@@ -473,7 +464,7 @@ export const server = {
       throw new Error(`Unknown widget action ${actionKey}`);
     }
     if (!isConfigured(config)) {
-      throw new Error('Server not configured. / Serveur non configuré.');
+      throw new Error(thrown(TEXT.serverNotConfigured));
     }
     logger.info('Widget scan -> starting a library scan');
     return runScan(config, { widget: true });
@@ -487,11 +478,12 @@ export const server = {
  * @param {{ widget?: boolean }} [options] `widget` when tapped from the
  *   dashboard: a thrown message is then a toast, 200 characters at most,
  *   so the refusal is said in a few words
- * @returns {Promise<{ en: string, fr: string }>} the message shown to the user
+ * @returns {Promise<{ en: string, fr: string, de: string, es: string }>} the message
+ *   shown to the user
  * @throws when the server refuses: Gladys renders a RETURNED message in
  *   green, as a success, and only a THROWN one in red — and a refusal has to
  *   read as a refusal. A thrown message reaches the screen as a plain string
- *   (the core cannot localize it), hence the two languages.
+ *   (the core cannot localize it), hence the joined languages (src/i18n.js).
  */
 async function runScan(config, { widget = false } = {}) {
   let status;
@@ -501,30 +493,13 @@ async function runScan(config, { widget = false } = {}) {
     logger.warn(`startScan refused (${err.message})`);
     if (err.code === 50) {
       // Navidrome, and most servers, reserve a scan to administrators.
-      throw new Error(
-        widget
-          ? 'Scan refused: administrators only. / Scan refusé : réservé aux administrateurs.'
-          : 'The server refuses a scan from this account: starting one is reserved to ' +
-              'administrators. The sensors do not need it, the library is scanned on the ' +
-              "server's own schedule. / Le serveur refuse le scan pour ce compte : son " +
-              'lancement est réservé aux administrateurs. Les capteurs n’en ont pas besoin, ' +
-              'la bibliothèque est scannée selon la planification du serveur.',
-        { cause: err },
-      );
+      throw new Error(thrown(widget ? TEXT.scanRefusedShort : TEXT.scanRefused), {
+        cause: err,
+      });
     }
-    throw new Error(
-      widget
-        ? `Scan not started: ${err.message} / Scan non lancé : ${err.message}`
-        : `Scan could not be started: ${err.message} / Impossible de lancer le scan : ${err.message}`,
-      { cause: err },
-    );
+    // The error message is said once, after the four languages.
+    const message = thrown(widget ? TEXT.scanNotStarted : TEXT.scanFailed, err.message);
+    throw new Error(widget ? fit(message, 200) : message, { cause: err });
   }
-  const count = status.count !== undefined ? ` (${status.count} items so far)` : '';
-  const countFr = status.count !== undefined ? ` (${status.count} éléments pour l'instant)` : '';
-  return {
-    en: status.scanning ? `Library scan in progress${count}.` : 'Library scan finished.',
-    fr: status.scanning
-      ? `Scan de la bibliothèque en cours${countFr}.`
-      : 'Scan de la bibliothèque terminé.',
-  };
+  return status.scanning ? MESSAGES.scanInProgress(status.count) : TEXT.scanFinished;
 }
