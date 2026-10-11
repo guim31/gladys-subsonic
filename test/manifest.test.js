@@ -115,7 +115,7 @@ test('widget declarations respect the store constraints', () => {
   assert.ok(manifest.widgets.length >= 1 && manifest.widgets.length <= 5);
   for (const widget of manifest.widgets) {
     assert.match(widget.key, /^[a-z0-9_]{2,32}$/);
-    for (const lang of ['en', 'fr']) {
+    for (const lang of ['en', 'fr', 'de', 'es']) {
       const label = widget.label[lang];
       assert.ok(label.length >= 3 && label.length <= 30, `${widget.key} label.${lang} "${label}"`);
       const description = widget.description?.[lang] ?? '';

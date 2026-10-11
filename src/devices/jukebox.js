@@ -21,6 +21,7 @@ import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } fr
 import { isConfigured, pollFrequencyMs } from '../config.js';
 import { serverPlatformId } from './server.js';
 import { JUKEBOX_ACTION, RANDOM_SONG_COUNT } from '../widgets.js';
+import { TEXT, MESSAGES, thrown } from '../i18n.js';
 
 const DEVICE_TYPE = 'jukebox';
 
@@ -175,33 +176,23 @@ export const jukebox = {
       }
       const wanted = String(fields?.playlist ?? '').trim();
       if (!wanted) {
-        return { en: 'Give the name of a playlist.', fr: "Indiquez le nom d'une playlist." };
+        return TEXT.playlistMissing;
       }
       logger.info(`Action jukebox_play_playlist -> "${wanted}"`);
 
       const playlists = await getPlaylists(config);
       const match = playlists.find((p) => p.name?.toLowerCase() === wanted.toLowerCase());
       if (!match) {
-        const available = playlists.map((p) => p.name).join(', ') || 'none';
-        return {
-          en: `No playlist named "${wanted}". Available: ${available}.`,
-          fr: `Aucune playlist nommée « ${wanted} ». Disponibles : ${available}.`,
-        };
+        return MESSAGES.playlistNotFound(wanted, playlists.map((p) => p.name).join(', '));
       }
       const playlist = await getPlaylist(config, match.id);
       if (playlist.entry.length === 0) {
-        return {
-          en: `The playlist "${match.name}" is empty.`,
-          fr: `La playlist « ${match.name} » est vide.`,
-        };
+        return MESSAGES.playlistEmpty(match.name);
       }
       await jukeboxControl(config, 'clear');
       await jukeboxControl(config, 'add', { id: playlist.entry.map((song) => song.id) });
       await jukeboxControl(config, 'start');
-      return {
-        en: `Playing "${match.name}" (${playlist.entry.length} songs) on the jukebox.`,
-        fr: `Lecture de « ${match.name} » (${playlist.entry.length} morceaux) sur le jukebox.`,
-      };
+      return MESSAGES.playingPlaylist(match.name, playlist.entry.length);
     },
   },
 };
@@ -218,7 +209,7 @@ async function widgetAction(gladys, { actionKey, config }) {
     // The widget itself tells the user what to enable: a tap that reaches
     // this point comes from a content built before the config changed. A
     // thrown message becomes a toast of 200 characters at most: keep it short.
-    throw new Error('Jukebox not enabled. / Jukebox non activé.');
+    throw new Error(thrown(TEXT.jukeboxNotEnabled));
   }
   const ids = gladys.externalIds(DEVICE_TYPE, serverPlatformId(config));
   // The command already ran: a refused publication (the jukebox device was
@@ -305,15 +296,9 @@ export async function playRandom(config, count) {
  */
 function randomMessage(queued) {
   if (queued === 0) {
-    return {
-      en: 'The library returned no songs.',
-      fr: "La bibliothèque n'a renvoyé aucun morceau.",
-    };
+    return TEXT.noSongs;
   }
-  return {
-    en: `Playing ${queued} random songs on the jukebox.`,
-    fr: `Lecture de ${queued} morceaux aléatoires sur le jukebox.`,
-  };
+  return MESSAGES.playingRandom(queued);
 }
 
 /**
@@ -323,16 +308,10 @@ function randomMessage(queued) {
  */
 function jukeboxGuard(config) {
   if (!isConfigured(config)) {
-    return {
-      en: 'Fill in the server URL, username and password first.',
-      fr: "Renseignez d'abord l'URL du serveur, l'utilisateur et le mot de passe.",
-    };
+    return TEXT.notConfiguredFirst;
   }
   if (!config.jukebox_enabled) {
-    return {
-      en: 'Enable the jukebox in the integration configuration first (and on the server, e.g. Jukebox.Enabled in Navidrome).',
-      fr: "Activez d'abord le jukebox dans la configuration de l'intégration (et côté serveur, ex. Jukebox.Enabled dans Navidrome).",
-    };
+    return TEXT.jukeboxDisabledFirst;
   }
   return null;
 }

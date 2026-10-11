@@ -48,8 +48,15 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
   serveur injoignable avec le message d'erreur), jamais une erreur ; `ttl_seconds` 300 pour les
   états qui attendent l'utilisateur, 30 pour un serveur injoignable.
 - `src/widgets.js` est **pur** (aucun réseau) : chaque contenu est passé à
-  `validateWidgetContent` dans `test/widgets.test.js`. Les textes sont des objets `{ en, fr }`,
-  le cœur choisit.
+  `validateWidgetContent` dans `test/widgets.test.js`. Les textes sont des objets
+  `{ en, fr, de, es }`, le cœur choisit.
+- **Langues** : manifeste et code en `en`, `fr`, `de`, `es` (les quatre langues du front).
+  Tous les textes du code vivent dans `src/i18n.js` (`TEXT`, `MESSAGES`, `thrown()` qui
+  joint les langues d'un message jeté) ; `test/i18n.test.js` refuse une langue manquante, un
+  texte vide ou trop long, un « Sie »/« Ihr » de politesse en allemand (l'allemand tutoie,
+  l'espagnol vouvoie), et tout `en:`/`fr:` écrit hors de `src/i18n.js`. La doc reste en
+  `en`/`fr` (seules langues publiées par le store). Les noms de fonctionnalités restent en
+  anglais (figés à la création, pas de réglage de langue).
 
 ## Travailler sur ce dépôt
 

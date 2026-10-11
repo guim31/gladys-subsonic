@@ -27,6 +27,7 @@
 
 import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
 import { isPlaying, asArray } from './subsonic.js';
+import { TEXT as T, MESSAGES } from './i18n.js';
 
 /** Widget keys, declared in the manifest `widgets` (forever: never rename). */
 export const WIDGET = {
@@ -65,38 +66,6 @@ export const TTL = {
 // Gladys shows 8 rows of a `list` card-list at most.
 const MAX_LIST_ITEMS = 8;
 
-const T = {
-  streams: { en: 'Streams', fr: 'Lectures' },
-  nothingPlaying: { en: 'Nothing is playing right now.', fr: 'Rien en écoute.' },
-  unknownTrack: { en: 'Unknown track', fr: 'Morceau inconnu' },
-  jukeboxDisabled: {
-    en: 'Enable the jukebox in the integration configuration.',
-    fr: "Activez le jukebox dans la configuration de l'intégration.",
-  },
-  emptyQueue: { en: 'Empty queue', fr: 'File vide' },
-  state: { en: 'State', fr: 'État' },
-  playing: { en: 'Playing', fr: 'Lecture' },
-  stopped: { en: 'Stopped', fr: 'Arrêt' },
-  volume: { en: 'Volume', fr: 'Volume' },
-  queue: { en: 'Queue', fr: 'File' },
-  play: { en: 'Play', fr: 'Lecture' },
-  pause: { en: 'Pause', fr: 'Pause' },
-  previous: { en: 'Previous', fr: 'Précédent' },
-  next: { en: 'Next', fr: 'Suivant' },
-  random: { en: 'Shuffle', fr: 'Aléatoire' },
-  songs: { en: 'Songs', fr: 'Morceaux' },
-  artists: { en: 'Artists', fr: 'Artistes' },
-  albums: { en: 'Albums', fr: 'Albums' },
-  server: { en: 'Server', fr: 'Serveur' },
-  scan: { en: 'Scan', fr: 'Scan' },
-  scanUnavailable: { en: 'Unavailable', fr: 'Indisponible' },
-  scanButton: { en: 'Scan', fr: 'Scanner' },
-  notConfigured: {
-    en: 'Fill in the server URL, username and password in the configuration.',
-    fr: "Renseignez l'URL du serveur, l'utilisateur et le mot de passe dans la configuration.",
-  },
-};
-
 /**
  * A text cut to a bound (the core would cut it, and say so in its logs).
  * @param {unknown} text
@@ -132,7 +101,7 @@ export function describeTrack(entry) {
 /**
  * A content made of one sentence, for the states where the widget cannot
  * show its data (not configured, server unreachable).
- * @param {{ en: string, fr?: string }|string} text
+ * @param {{ en: string, fr?: string, de?: string, es?: string }|string} text
  * @param {number} [ttl]
  */
 export function messageContent(text, ttl = TTL.MESSAGE) {
@@ -153,13 +122,7 @@ export function notConfiguredContent() {
  * @param {string} message the error message
  */
 export function unreachableContent(message) {
-  return messageContent(
-    {
-      en: `Cannot reach the server: ${message}`,
-      fr: `Serveur injoignable : ${message}`,
-    },
-    TTL.NOW_PLAYING,
-  );
+  return messageContent(MESSAGES.unreachable(message), TTL.NOW_PLAYING);
 }
 
 /**
@@ -207,10 +170,9 @@ export function buildNowPlayingContent({ entries, streamsFeature, register }) {
         };
       }
       if (listener && player) {
-        item.description = {
-          en: fit(`Player: ${player}`, 200),
-          fr: fit(`Lecteur : ${player}`, 200),
-        };
+        item.description = Object.fromEntries(
+          Object.entries(MESSAGES.player(player)).map(([lang, text]) => [lang, fit(text, 200)]),
+        );
       }
       if (entry.coverArt) {
         item.image = register(entry.coverArt);
@@ -336,15 +298,13 @@ export function buildLibraryContent({ features, serverInfo, scanStatus }) {
   } else if (scanning) {
     scanRow = {
       label: T.scan,
-      value: { en: `Running${counted}`, fr: `En cours${counted}` },
+      value: MESSAGES.scanRunning(counted),
       color: WIDGET_COLORS.INFO,
     };
   } else {
     scanRow = {
       label: T.scan,
-      value: Number.isFinite(count)
-        ? { en: `Done · ${count} songs`, fr: `Terminé · ${count} morceaux` }
-        : { en: 'Done', fr: 'Terminé' },
+      value: Number.isFinite(count) ? MESSAGES.scanDoneCount(count) : T.scanDone,
       color: WIDGET_COLORS.NEUTRAL,
     };
   }

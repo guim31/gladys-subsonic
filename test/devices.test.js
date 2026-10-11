@@ -250,13 +250,15 @@ test('a scan refused for lack of rights is reported as an error, not a success',
   });
   try {
     // Gladys paints a returned message green: a refusal must throw so it
-    // shows up red, and must say why in both languages (a thrown message
+    // shows up red, and must say why in every language (a thrown message
     // reaches the screen as a plain string).
     await assert.rejects(
       () => server.actions.start_scan(gladys, { config: baseConfig }),
       (err) =>
         /reserved to administrators/.test(err.message) &&
         /réservé aux administrateurs/.test(err.message) &&
+        /Nur Administratoren/.test(err.message) &&
+        /solo los administradores/.test(err.message) &&
         err.cause?.code === 50,
     );
   } finally {
@@ -640,12 +642,14 @@ test('the library widget scan button starts a scan and reports it', async () => 
   try {
     const message = await server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig });
     assert.match(message.fr, /^Scan de la bibliothèque en cours \(12 éléments/);
-    assert.ok(message.en.length <= 200 && message.fr.length <= 200, 'a toast is 200 chars max');
+    for (const lang of ['en', 'fr', 'de', 'es']) {
+      assert.ok(message[lang].length <= 200, `a toast is 200 chars max (${lang})`);
+    }
   } finally {
     mock.restore();
   }
-  // A refusal thrown from the widget is a toast too: short, in both
-  // languages, where the configuration button keeps its long explanation.
+  // A refusal thrown from the widget is a toast too: short, in every
+  // language, where the configuration button keeps its long explanation.
   const refused = mockSubsonicFetch({
     startScan: { status: 'failed', error: { code: 50, message: 'User is not authorized' } },
   });
@@ -656,6 +660,8 @@ test('the library widget scan button starts a scan and reports it', async () => 
         err.message.length <= 200 &&
         /administrators only/.test(err.message) &&
         /réservé aux administrateurs/.test(err.message) &&
+        /nur für Administratoren/.test(err.message) &&
+        /solo administradores/.test(err.message) &&
         err.cause?.code === 50,
     );
     await assert.rejects(
@@ -671,7 +677,10 @@ test('the library widget scan button starts a scan and reports it', async () => 
   try {
     await assert.rejects(
       () => server.widgetAction(gladys, { actionKey: 'scan', config: baseConfig }),
-      /Scan not started: Subsonic error 0: boom \/ Scan non lancé/,
+      (err) =>
+        err.message ===
+        'Scan not started / Scan non lancé / Scan nicht gestartet / Análisis no iniciado: ' +
+          'Subsonic error 0: boom',
     );
   } finally {
     failed.restore();
@@ -842,7 +851,8 @@ test('jukebox widget buttons refuse to run while the jukebox is disabled', async
     () => jukebox.widgetAction(fake, { actionKey: 'toggle', config: baseConfig }),
     (err) =>
       err.message.length <= 200 &&
-      /Jukebox not enabled\. \/ Jukebox non activé\./.test(err.message),
+      err.message ===
+        'Jukebox not enabled. / Jukebox non activé. / Jukebox nicht aktiviert. / Jukebox no activada.',
   );
   await assert.rejects(
     () => jukebox.widgetAction(fake, { actionKey: 'bogus', config: jukeboxConfig }),

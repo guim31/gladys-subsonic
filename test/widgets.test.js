@@ -121,7 +121,12 @@ test('now_playing: the live streams tile and one row per entry, playing first', 
   assert.equal(playing.subtitle, 'Radiohead · OK Computer');
   // Who listens in the badge, the player in the detail of the row.
   assert.deepEqual(playing.badge, { text: 'guilhem', color: 'success' });
-  assert.deepEqual(playing.description, { en: 'Player: Kitchen', fr: 'Lecteur : Kitchen' });
+  assert.deepEqual(playing.description, {
+    en: 'Player: Kitchen',
+    fr: 'Lecteur : Kitchen',
+    de: 'Player: Kitchen',
+    es: 'Reproductor: Kitchen',
+  });
   assert.match(playing.image, IMAGE_KEY);
   assert.equal(playing.image, coverImageKey('al-OK1'));
   assert.equal(paused.badge.color, 'neutral');
@@ -166,7 +171,12 @@ test('now_playing: at most 8 rows, then an explicit empty state', () => {
   assert.deepEqual(empty.components[1], {
     type: 'text',
     variant: 'body',
-    text: { en: 'Nothing is playing right now.', fr: 'Rien en écoute.' },
+    text: {
+      en: 'Nothing is playing right now.',
+      fr: 'Rien en écoute.',
+      de: 'Gerade läuft nichts.',
+      es: 'No se está reproduciendo nada.',
+    },
   });
 });
 
@@ -250,7 +260,12 @@ test('jukebox: play button and stopped state while stopped, no volume when unkno
   });
   assert.deepEqual(validateWidgetContent(content), []);
   const status = content.components.find((c) => c.type === 'status');
-  assert.deepEqual(status.items[0].value, { en: 'Stopped', fr: 'Arrêt' });
+  assert.deepEqual(status.items[0].value, {
+    en: 'Stopped',
+    fr: 'Arrêt',
+    de: 'Gestoppt',
+    es: 'Detenido',
+  });
   assert.equal(status.items[0].color, 'neutral');
   assert.equal(status.items.length, 2, 'no volume row without a gain');
   assert.equal(status.items[1].value, '3 / 3');
@@ -275,7 +290,7 @@ test('jukebox: an empty queue offers shuffle only, a disabled jukebox a sentence
   assert.deepEqual(empty.components[0], {
     type: 'text',
     variant: 'heading',
-    text: { en: 'Empty queue', fr: 'File vide' },
+    text: { en: 'Empty queue', fr: 'File vide', de: 'Warteschlange leer', es: 'Cola vacía' },
   });
   const buttons = empty.components.filter((c) => c.type === 'button');
   assert.equal(buttons.length, 1);
@@ -372,7 +387,12 @@ test('library: a running scan is followed every 10 s, a refused one is said', ()
   assert.deepEqual(validateWidgetContent(scanning), []);
   assert.equal(scanning.ttl_seconds, 10);
   const row = scanning.components.find((c) => c.type === 'status').items[1];
-  assert.deepEqual(row.value, { en: 'Running · 120', fr: 'En cours · 120' });
+  assert.deepEqual(row.value, {
+    en: 'Running · 120',
+    fr: 'En cours · 120',
+    de: 'Läuft · 120',
+    es: 'En curso · 120',
+  });
   assert.equal(row.color, 'info');
 
   const refused = buildLibraryContent({ features, serverInfo: null, scanStatus: null });
@@ -380,7 +400,12 @@ test('library: a running scan is followed every 10 s, a refused one is said', ()
   assert.equal(refused.ttl_seconds, 900);
   const [serverRow, scanRow] = refused.components.find((c) => c.type === 'status').items;
   assert.equal(serverRow.value, 'Subsonic');
-  assert.deepEqual(scanRow.value, { en: 'Unavailable', fr: 'Indisponible' });
+  assert.deepEqual(scanRow.value, {
+    en: 'Unavailable',
+    fr: 'Indisponible',
+    de: 'Nicht verfügbar',
+    es: 'No disponible',
+  });
 
   // A server reporting no count: "done", without a number.
   const uncounted = buildLibraryContent({ features, serverInfo, scanStatus: { scanning: false } });
@@ -388,5 +413,7 @@ test('library: a running scan is followed every 10 s, a refused one is said', ()
   assert.deepEqual(uncounted.components.find((c) => c.type === 'status').items[1].value, {
     en: 'Done',
     fr: 'Terminé',
+    de: 'Fertig',
+    es: 'Terminado',
   });
 });
