@@ -19,7 +19,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
-import { serverPlatformId } from './server.js';
+import { serverPlatformId, STATE_HEARTBEAT_MS } from './server.js';
 import { JUKEBOX_ACTION, RANDOM_SONG_COUNT } from '../widgets.js';
 import { TEXT, MESSAGES, thrown } from '../i18n.js';
 
@@ -37,6 +37,15 @@ export const JUKEBOX_FEATURE = {
   PLAYBACK_STATE: 'playback-state',
 };
 const FEATURE = JUKEBOX_FEATURE;
+
+/**
+ * Publish one state through the SDK's deduplication, like the poll: one
+ * memory of what Gladys holds, so a poll never skips a value a command
+ * changed behind its back.
+ */
+function publishOne(gladys, featureExternalId, state) {
+  return gladys.publishChangedStates([{ device_feature_external_id: featureExternalId, state }]);
+}
 
 export const jukebox = {
   key: DEVICE_TYPE,
@@ -107,13 +116,13 @@ export const jukebox = {
     switch (feature.type) {
       case DEVICE_FEATURE_TYPES.MUSIC.PLAY: {
         await jukeboxControl(config, 'start');
-        await gladys.publishState(ids.feature(FEATURE.PLAYBACK_STATE), 1);
+        await publishOne(gladys, ids.feature(FEATURE.PLAYBACK_STATE), 1);
         return;
       }
       case DEVICE_FEATURE_TYPES.MUSIC.PAUSE: {
         // The jukebox "stop" keeps the position: it behaves as a pause.
         await jukeboxControl(config, 'stop');
-        await gladys.publishState(ids.feature(FEATURE.PLAYBACK_STATE), 0);
+        await publishOne(gladys, ids.feature(FEATURE.PLAYBACK_STATE), 0);
         return;
       }
       case DEVICE_FEATURE_TYPES.MUSIC.NEXT:
@@ -126,7 +135,7 @@ export const jukebox = {
         const status = await jukeboxControl(config, 'setGain', { gain });
         // has_feedback = true -> publish the value confirmed by the server.
         const confirmed = status.gain !== undefined ? Math.round(status.gain * 100) : value;
-        await gladys.publishState(feature.external_id, confirmed);
+        await publishOne(gladys, feature.external_id, confirmed);
         return;
       }
       default:
@@ -154,7 +163,7 @@ export const jukebox = {
         state: Math.round(status.gain * 100),
       });
     }
-    await gladys.publishStates(states);
+    await gladys.publishChangedStates(states, { heartbeat: STATE_HEARTBEAT_MS });
   },
 
   actions: {
@@ -218,7 +227,7 @@ async function widgetAction(gladys, { actionKey, config }) {
   const publishPlayback = async (status, expected) => {
     const state = typeof status?.playing === 'boolean' ? (status.playing ? 1 : 0) : expected;
     try {
-      await gladys.publishState(ids.feature(FEATURE.PLAYBACK_STATE), state);
+      await publishOne(gladys, ids.feature(FEATURE.PLAYBACK_STATE), state);
     } catch (err) {
       logger.warn(`Playback state not published after a widget action (${err.message})`);
     }

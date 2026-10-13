@@ -119,11 +119,12 @@ an image.
 - **The jukebox makes no sound**: the audio comes out of the server host, not
   the device running Gladys. Check `Jukebox.Enabled` and the host's audio
   output (audio device access for a Docker container, if applicable).
-- **The sensors show "no recent value"**: they have never been polled yet.
-  After updating the integration, go back to the **Discovery** tab and click
-  the device again: this re-applies its definition (including the periodic
-  polling flag) to the already created device. The first value lands on the
-  next poll (60 s by default).
+- **The sensors show "no recent value"**: the integration reads the server
+  itself as soon as the device is added, then at the chosen interval (60 s by
+  default), whatever Gladys' own polling does. If the values stay empty, the
+  server does not answer: **Test the connection** says why, and the
+  integration logs say it once (and once more when it answers again).
+  A value that does not change is only sent again every 12 hours.
 - **"The server refuses a scan from this account"**: starting a scan is
   reserved to administrators (Navidrome does so). It does not matter: the
   button is only a shortcut, the server scans on its own schedule and the

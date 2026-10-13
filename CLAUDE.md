@@ -2,7 +2,7 @@
 
 Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic...
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.14.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.15.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
@@ -14,6 +14,42 @@ Version 1.0.8 publiée, indexée dans le store, sans widget. La branche
 tout cela n'a été vu sur une instance Gladys ni sur un serveur Subsonic réel : seuls les tests, le
 lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mises à jour des cœurs
 4.x : la Release qui l'embarque est une **minor**, à annoncer.
+
+## Maintenance SDK 0.15 (13/10/2026)
+
+- **Le conteneur sonde lui-même** (`src/poller.js`) : Gladys 5.2.0 ne sonde un appareil que s'il a
+  été créé avec `should_poll: true` et un `poll_frequency` valide, et un appareil garde à vie les
+  champs de sa création (Gladys#3198, correctif #3199 non publié). Les appareils gardent
+  `should_poll: true` et l'`onPoll` du cœur reste un repli : il saute un appareil sondé il y a
+  moins de 90 % d'une période (un appareil créé à 10 s garde ce rythme côté cœur même si la config
+  passe à 60 s), le minuteur saute un appareil sondé il y a moins d'une demi-période ; le cœur ne
+  lit donc le serveur que si le minuteur cale. Un sondage forcé (création, config) attend celui en
+  cours puis relance avec la config du moment.
+  Seuls les appareils **ajoutés** à Gladys (`gladys.devices`) sont sondés, comme quand seul le cœur
+  sondait. Sondage immédiat à la (re)connexion, au changement de config et à la création ou mise à
+  jour d'un appareil (`poller.register()` pose `onPoll`, `onDeviceCreated`, `onDeviceUpdated`) ;
+  rien quand Gladys est injoignable (`gladys.connected`).
+- **États dédupliqués** : tout passe par `publishChangedStates`, y compris les commandes du
+  jukebox (`publishOne`) : une seule mémoire de ce que Gladys a, sinon un sondage sauterait une
+  valeur qu'une commande a changée entre-temps. Le SDK oublie cette mémoire à la création ou mise à
+  jour d'un appareil ; `server.forgetPublished()` fait de même pour la pochette (canal caméra),
+  en gardant l'image en secours. **Heartbeat 12 h** (`STATE_HEARTBEAT_MS`) : le cœur affiche « Pas
+  de valeur récente » au-delà de 48 h sans valeur (`last_value_changed`), et les compteurs de la
+  bibliothèque peuvent rester fixes des jours.
+- **Logs** : rien en info pour un cycle normal (`Server polled`, lecture de la bibliothèque,
+  pochette publiée passent en debug, `LOG_LEVEL=debug` pour les voir). Les échecs répétés passent
+  par `createIssueLog` (`src/issues.js`) : un warn au premier échec, debug ensuite, une ligne info
+  au rétablissement (sondage, `getScanStatus`, pochettes, widgets). `test/poller.test.js` vérifie
+  qu'un cycle normal n'écrit rien en info.
+- **Tests** : `test/helpers/fakeGladys.js` enveloppe le faux Gladys du SDK
+  (`@gladysassistant/integration-sdk/testing`) : ids préfixés `ext:test-integration:`, charges
+  validées comme par l'API hôte, vues `published` / `cameraImages` / `connectionStatuses`.
+- **Navidrome à bibliothèque vide** (vérifié contre `deluan/navidrome` 0.64.2 en Docker) :
+  `getArtists` répond l'erreur 70 « Library not found or empty » ; sans parade tout le sondage
+  échouait et aucun état ne partait. `getArtists` la lit comme une bibliothèque vide (`[]`).
+- **Publication** : ce dépôt n'a ni `CHANGELOG.md` ni `.github/scripts/release.mjs` :
+  `outils/release.sh` ne s'y applique pas, la Release passe par le workflow (Actions → Release),
+  notes tirées des PR.
 
 ## Choix
 
@@ -88,7 +124,9 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   `poll_frequency` vaut une valeur de la liste fixe (1000, 2000, 10000, 15000, 30000, 60000 ms).
   Publier seulement `poll_frequency` donne un appareil accepté mais jamais interrogé. Pour une
   cadence hors liste, publier `should_poll: false` et pousser les états depuis le conteneur, en
-  gardant un `onPoll` de repli.
+  gardant un `onPoll` de repli. Et même avec les deux, ne pas compter sur le cœur : un appareil
+  créé sans `should_poll` ne sera jamais sondé, même une fois #3199 publié (Gladys#3198). Un
+  minuteur du conteneur fait le travail (ici `src/poller.js`).
 - **`min` et `max` sont NOT NULL** dans `t_device_feature`, y compris pour `text/text` : sans eux,
   « Ajouter à Gladys » échoue en HTTP 422. Mettre 0/0, comme Zigbee2MQTT.
 - `level-sensor/decimal` n'existe pas côté serveur. `light-sensor/binary` n'a pas de libellé dans

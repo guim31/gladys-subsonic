@@ -187,11 +187,14 @@ test('server onPoll publishes streams, now playing and the library counts', asyn
   const byFeature = Object.fromEntries(
     fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
   );
-  assert.equal(byFeature['server:music-example-com:active-streams'], 2);
-  assert.equal(byFeature['server:music-example-com:now-playing'], 'Air — Sexy Boy +1 more');
-  assert.equal(byFeature['server:music-example-com:song-count'], 4242);
-  assert.equal(byFeature['server:music-example-com:artist-count'], 2);
-  assert.equal(byFeature['server:music-example-com:album-count'], 5);
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:active-streams'], 2);
+  assert.equal(
+    byFeature['ext:test-integration:server:music-example-com:now-playing'],
+    'Air — Sexy Boy +1 more',
+  );
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:song-count'], 4242);
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:artist-count'], 2);
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:album-count'], 5);
 });
 
 test('a session left in the list after playback stopped is not counted', async () => {
@@ -219,8 +222,11 @@ test('a session left in the list after playback stopped is not counted', async (
   const byFeature = Object.fromEntries(
     fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
   );
-  assert.equal(byFeature['server:music-example-com:active-streams'], 0);
-  assert.equal(byFeature['server:music-example-com:now-playing'], 'Nothing playing');
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:active-streams'], 0);
+  assert.equal(
+    byFeature['ext:test-integration:server:music-example-com:now-playing'],
+    'Nothing playing',
+  );
 });
 
 test('a server reporting no playback state keeps every listed session', async () => {
@@ -240,8 +246,11 @@ test('a server reporting no playback state keeps every listed session', async ()
   const byFeature = Object.fromEntries(
     fake.published.map((p) => [p.featureExternalId, p.state ?? p.text]),
   );
-  assert.equal(byFeature['server:music-example-com:active-streams'], 1);
-  assert.equal(byFeature['server:music-example-com:now-playing'], 'Air — Sexy Boy');
+  assert.equal(byFeature['ext:test-integration:server:music-example-com:active-streams'], 1);
+  assert.equal(
+    byFeature['ext:test-integration:server:music-example-com:now-playing'],
+    'Air — Sexy Boy',
+  );
 });
 
 test('a scan refused for lack of rights is reported as an error, not a success', async () => {
@@ -286,7 +295,10 @@ test('the cover art is published on the image channel, once per track', async ()
   }
 
   assert.equal(fake.cameraImages.length, 2, 'one image per distinct cover, not per poll');
-  assert.equal(fake.cameraImages[0].deviceExternalId, 'server:music-example-com');
+  assert.equal(
+    fake.cameraImages[0].deviceExternalId,
+    'ext:test-integration:server:music-example-com',
+  );
   // The dashboard renders the string as `data:<image>`, so it must carry its
   // own mime type and stay under the 150 KB the core accepts.
   assert.match(fake.cameraImages[0].image, /^image\/jpeg;base64,/);
@@ -385,7 +397,9 @@ test('a cover art that cannot be fetched never breaks the poll', async () => {
   assert.match(fake.cameraImages[0].image, /^image\/svg\+xml;base64,/);
   // The sensors of the same poll went through regardless.
   assert.ok(
-    fake.published.some((p) => p.featureExternalId === 'server:music-example-com:now-playing'),
+    fake.published.some(
+      (p) => p.featureExternalId === 'ext:test-integration:server:music-example-com:now-playing',
+    ),
   );
 });
 
@@ -415,15 +429,14 @@ test('the heavy artist list is fetched once while the library is unchanged', asy
   }
   const calls = mock.calls.filter((c) => c.endpoint === 'getArtists');
   assert.equal(calls.length, 1, 'getArtists must be served from the cache after the first poll');
-  // ...and the counts are still published on every poll, so the dashboard
-  // never goes stale.
+  // ...and the counts reach Gladys once: an unchanged value is not sent
+  // again before the heartbeat (publishChangedStates, see poller.test.js).
   const albums = fake.published.filter(
-    (p) => p.featureExternalId === 'server:music-example-com:album-count',
+    (p) => p.featureExternalId === 'ext:test-integration:server:music-example-com:album-count',
   );
-  assert.equal(albums.length, 3);
   assert.deepEqual(
     albums.map((p) => p.state),
-    [5, 5, 5],
+    [5],
   );
 });
 
@@ -459,11 +472,11 @@ test('a server refusing getScanStatus still publishes what it can', async () => 
   }
   const ids = fake.published.map((p) => p.featureExternalId);
   assert.ok(
-    ids.includes('server:music-example-com:artist-count'),
+    ids.includes('ext:test-integration:server:music-example-com:artist-count'),
     'library counts still published',
   );
   assert.ok(
-    !ids.includes('server:music-example-com:song-count'),
+    !ids.includes('ext:test-integration:server:music-example-com:song-count'),
     'an unmeasured song count must not be published as 0',
   );
 });
@@ -505,7 +518,7 @@ test('jukebox volume maps 0-100 to the 0.0-1.0 gain and publishes the feedback',
     mock.restore();
   }
   assert.deepEqual(fake.published, [
-    { featureExternalId: 'jukebox:music-example-com:volume', state: 40 },
+    { featureExternalId: 'ext:test-integration:jukebox:music-example-com:volume', state: 40 },
   ]);
 });
 
@@ -552,8 +565,11 @@ test('jukebox onPoll publishes the playback state and the volume', async () => {
     mock.restore();
   }
   assert.deepEqual(fake.published, [
-    { featureExternalId: 'jukebox:music-example-com:playback-state', state: 1 },
-    { featureExternalId: 'jukebox:music-example-com:volume', state: 90 },
+    {
+      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
+      state: 1,
+    },
+    { featureExternalId: 'ext:test-integration:jukebox:music-example-com:volume', state: 90 },
   ]);
 });
 
@@ -749,8 +765,14 @@ test('jukebox widget toggle reads the state at tap time and publishes the new on
     srv.restore();
   }
   assert.deepEqual(fake.published, [
-    { featureExternalId: 'jukebox:music-example-com:playback-state', state: 0 },
-    { featureExternalId: 'jukebox:music-example-com:playback-state', state: 1 },
+    {
+      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
+      state: 0,
+    },
+    {
+      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
+      state: 1,
+    },
   ]);
 });
 
@@ -772,10 +794,11 @@ test('jukebox widget previous/next skip in the queue, refused past its ends', as
   } finally {
     srv.restore();
   }
-  // A skip starts playing: the state Gladys shows follows.
+  // A skip starts playing: the state Gladys shows follows — sent once, the
+  // second skip leaves it unchanged (deduplicated like the poll).
   assert.deepEqual(
     fake.published.map((p) => p.state),
-    [1, 1],
+    [1],
   );
 });
 
@@ -801,7 +824,7 @@ test('jukebox widget shuffle queues random songs, like the configuration action'
     srv.restore();
   }
   assert.deepEqual(fake.published[0], {
-    featureExternalId: 'jukebox:music-example-com:playback-state',
+    featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
     state: 1,
   });
 

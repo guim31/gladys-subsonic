@@ -106,9 +106,10 @@ test('the declared widgets are exactly the ones the code serves', () => {
   }
 });
 
-test('widgets need Gladys 5.1 and the 0.14 SDK', () => {
+test('widgets need Gladys 5.1, the poller the 0.15 SDK', () => {
   assert.match(manifest.gladys_version, />=\s*5\.1\.0/, 'widgets need the 5.1 core');
-  assert.match(packageJson.dependencies['@gladysassistant/integration-sdk'], /\^0\.14\./);
+  // publishChangedStates and the testing entry point arrived with 0.15.
+  assert.match(packageJson.dependencies['@gladysassistant/integration-sdk'], /\^0\.15\./);
 });
 
 test('widget declarations respect the store constraints', () => {

@@ -10,6 +10,8 @@
 // rest of the code never has to deal with `undefined`.
 // -----------------------------------------------------------------------------
 
+import { DEVICE_POLL_FREQUENCIES } from '@gladysassistant/integration-sdk';
+
 // Defaults: they MUST stay consistent with the `default` values declared in the
 // `config_schema` of the manifest.
 export const DEFAULT_CONFIG = {
@@ -66,11 +68,16 @@ export function isConfigured(config) {
 }
 
 // Gladys only accepts a device `poll_frequency` from a closed list of values,
-// in MILLISECONDS (DEVICE_POLL_FREQUENCIES in the Gladys server): 60000,
-// 30000, 15000, 10000, 2000 and 1000. Anything else rejects the whole
-// device publication with "invalid poll frequency". Sub-10s HTTP polling
-// of a music server is pointless, so we only ever emit these:
-const ALLOWED_POLL_SECONDS = [60, 30, 15, 10];
+// in MILLISECONDS (DEVICE_POLL_FREQUENCIES, mirrored by the SDK). Anything
+// else rejects the whole device publication with "invalid poll frequency".
+// Sub-10s HTTP polling of a music server is pointless, so we only ever emit
+// these (the container's own timer, src/poller.js, uses the same pace):
+const ALLOWED_POLL_MS = [
+  DEVICE_POLL_FREQUENCIES.EVERY_MINUTES,
+  DEVICE_POLL_FREQUENCIES.EVERY_30_SECONDS,
+  DEVICE_POLL_FREQUENCIES.EVERY_15_SECONDS,
+  DEVICE_POLL_FREQUENCIES.EVERY_10_SECONDS,
+];
 
 /**
  * Convert the configured interval (seconds) into a poll_frequency Gladys
@@ -79,12 +86,11 @@ const ALLOWED_POLL_SECONDS = [60, 30, 15, 10];
  * @returns {number} milliseconds
  */
 export function pollFrequencyMs(config) {
-  const seconds = Number(config.poll_frequency);
-  if (!Number.isFinite(seconds)) {
+  const ms = Number(config.poll_frequency) * 1000;
+  if (!Number.isFinite(ms)) {
     return DEFAULT_CONFIG.poll_frequency * 1000;
   }
-  const closest = ALLOWED_POLL_SECONDS.reduce((best, candidate) =>
-    Math.abs(candidate - seconds) < Math.abs(best - seconds) ? candidate : best,
+  return ALLOWED_POLL_MS.reduce((best, candidate) =>
+    Math.abs(candidate - ms) < Math.abs(best - ms) ? candidate : best,
   );
-  return closest * 1000;
 }

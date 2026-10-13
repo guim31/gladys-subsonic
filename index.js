@@ -42,6 +42,8 @@ import {
 } from './src/widgets.js';
 import { createCoverRegistry, resolveWidgetImage } from './src/covers.js';
 import { TEXT, MESSAGES } from './src/i18n.js';
+import { createPoller } from './src/poller.js';
+import { createIssueLog } from './src/issues.js';
 
 const gladys = new GladysIntegration();
 
@@ -54,6 +56,12 @@ let serverInfo = null;
 
 // The cover art ids handed out to the widgets, by image key.
 const covers = createCoverRegistry();
+
+// The container polls the added devices itself (see src/poller.js).
+const poller = createPoller({ gladys, getConfig: () => config });
+
+// A widget refreshed every 30 s against a server that is down: said once.
+const widgetIssues = createIssueLog(logger);
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
@@ -76,7 +84,8 @@ gladys.onSetValue(async (device, feature, value) => {
 // Triggered by the dashboard live view or a chat intent. The resolved
 // `<mime>;base64,...` string (≤ 150 KB) is acked back to Gladys.
 gladys.onGetImage(async (device) => {
-  logger.info(`onGetImage <- ${device.external_id}`);
+  // Asked again and again by an open live view: debug.
+  logger.debug(`onGetImage <- ${device.external_id}`);
   const blueprint = findBlueprintByDevice(gladys, device, config);
   if (!blueprint || typeof blueprint.onGetImage !== 'function') {
     throw new Error(`No image handler for ${device.external_id}`);
@@ -84,15 +93,11 @@ gladys.onGetImage(async (device) => {
   return blueprint.onGetImage(gladys, { device, config });
 });
 
-// --- Polling: Gladys asks to refresh a device --------------------------------
-gladys.onPoll(async (device) => {
-  const blueprint = findBlueprintByDevice(gladys, device, config);
-  if (!blueprint || typeof blueprint.onPoll !== 'function') {
-    logger.debug(`onPoll ignored (no polling) for ${device.external_id}`);
-    return;
-  }
-  await blueprint.onPoll(gladys, config);
-});
+// --- Polling ------------------------------------------------------------------
+// The container's timer does the work (src/poller.js). The core's onPoll is
+// the fallback, skipped when the timer has just polled the device; a device
+// just added to Gladys is polled at once.
+poller.register();
 
 // --- Manifest actions: buttons in the Configuration screen -------------------
 // Each action declared in the `actions` field of the manifest is registered
@@ -118,13 +123,14 @@ gladys.onWidgetGet(WIDGET.NOW_PLAYING, async () => {
   try {
     // The same list the poll reads: reused while it is fresh enough.
     const entries = await readNowPlaying(config);
+    widgetIssues.ok('now_playing', 'now_playing widget: server answers again');
     return buildNowPlayingContent({
       entries,
       streamsFeature: ids.feature(SERVER_FEATURE.ACTIVE_STREAMS),
       register: (coverArtId) => covers.register(coverArtId),
     });
   } catch (err) {
-    logger.warn(`now_playing widget: ${err.message}`);
+    widgetIssues.fail('now_playing', `now_playing widget: ${err.message}`);
     return unreachableContent(err.message);
   }
 });
@@ -138,13 +144,14 @@ gladys.onWidgetGet(WIDGET.JUKEBOX, async () => {
   }
   try {
     const playlist = await jukeboxControl(config, 'get');
+    widgetIssues.ok('jukebox', 'jukebox widget: server answers again');
     return buildJukeboxContent({
       enabled: true,
       playlist,
       register: (coverArtId) => covers.register(coverArtId),
     });
   } catch (err) {
-    logger.warn(`jukebox widget: ${err.message}`);
+    widgetIssues.fail('jukebox', `jukebox widget: ${err.message}`);
     return unreachableContent(err.message);
   }
 });
@@ -161,6 +168,7 @@ gladys.onWidgetGet(WIDGET.LIBRARY, async () => {
     }
     // readScanStatus swallows a refusal (null): the widget then says so.
     const scanStatus = await readScanStatus(config);
+    widgetIssues.ok('library', 'library widget: server answers again');
     return buildLibraryContent({
       features: {
         songs: ids.feature(SERVER_FEATURE.SONG_COUNT),
@@ -171,7 +179,7 @@ gladys.onWidgetGet(WIDGET.LIBRARY, async () => {
       scanStatus,
     });
   } catch (err) {
-    logger.warn(`library widget: ${err.message}`);
+    widgetIssues.fail('library', `library widget: ${err.message}`);
     return unreachableContent(err.message);
   }
 });
@@ -198,6 +206,8 @@ gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> new configuration received');
   config = normalizeConfig(newConfig);
   await checkServerAndPublish();
+  // Maybe another server, another pace: start the polling over.
+  await poller.restart();
 });
 
 // --- Connection lifecycle ----------------------------------------------------
@@ -210,6 +220,8 @@ gladys.on('connected', async () => {
     // and (re)publish the devices.
     config = normalizeConfig(await gladys.getConfig());
     await checkServerAndPublish();
+    // Poll the added devices now (Gladys may have restarted), then on the timer.
+    await poller.restart();
   } catch (err) {
     logger.error('Post-connection initialization failed', err);
     await gladys.setConnectionStatus(false, TEXT.initFailed).catch(() => {});
@@ -260,6 +272,7 @@ async function checkServerAndPublish() {
 // the container (SIGTERM/SIGINT).
 gladys.handleShutdown((signal) => {
   logger.info(`Received ${signal} -> graceful shutdown`);
+  poller.stop();
 });
 
 // --- Startup -----------------------------------------------------------------
