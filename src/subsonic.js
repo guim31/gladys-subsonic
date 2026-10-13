@@ -194,7 +194,17 @@ export function isPlaying(entry) {
 
 /** All artists (ID3 tags), flattened from the alphabetical index. */
 export async function getArtists(config) {
-  const envelope = await request(config, 'getArtists');
+  let envelope;
+  try {
+    envelope = await request(config, 'getArtists');
+  } catch (err) {
+    // Navidrome answers error 70 ("Library not found or empty") while its
+    // library holds no file yet: an empty library, not a failing server.
+    if (err instanceof SubsonicError && err.code === 70) {
+      return [];
+    }
+    throw err;
+  }
   return asArray(envelope.artists?.index).flatMap((index) => asArray(index.artist));
 }
 

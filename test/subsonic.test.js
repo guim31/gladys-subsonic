@@ -8,6 +8,7 @@ import {
   asArray,
   ping,
   jukeboxControl,
+  getArtists,
   SubsonicError,
   API_VERSION,
   CLIENT_NAME,
@@ -105,6 +106,19 @@ test('jukeboxControl returns the playlist for get and the status otherwise', asy
   } finally {
     mock.restore();
   }
+});
+
+test('getArtists reads an empty library (Navidrome error 70) as no artist', async (t) => {
+  // Real answer of Navidrome 0.64 with an empty music folder.
+  let answer = { status: 'failed', error: { code: 70, message: 'Library not found or empty' } };
+  const mock = mockSubsonicFetch({ getArtists: () => answer });
+  t.after(() => mock.restore());
+  assert.deepEqual(await getArtists(config), []);
+  answer = { status: 'failed', error: { code: 40, message: 'Wrong username or password' } };
+  await assert.rejects(
+    getArtists(config),
+    (err) => err instanceof SubsonicError && err.code === 40,
+  );
 });
 
 test('redactAuth blanks the token, salt and legacy password of an embedded URL', () => {

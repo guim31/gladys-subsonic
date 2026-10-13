@@ -38,6 +38,9 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
 - **Tests** : `test/helpers/fakeGladys.js` enveloppe le faux Gladys du SDK
   (`@gladysassistant/integration-sdk/testing`) : ids préfixés `ext:test-integration:`, charges
   validées comme par l'API hôte, vues `published` / `cameraImages` / `connectionStatuses`.
+- **Navidrome à bibliothèque vide** (vérifié contre `deluan/navidrome` 0.64.2 en Docker) :
+  `getArtists` répond l'erreur 70 « Library not found or empty » ; sans parade tout le sondage
+  échouait et aucun état ne partait. `getArtists` la lit comme une bibliothèque vide (`[]`).
 - **Publication** : ce dépôt n'a ni `CHANGELOG.md` ni `.github/scripts/release.mjs` :
   `outils/release.sh` ne s'y applique pas, la Release passe par le workflow (Actions → Release),
   notes tirées des PR.
