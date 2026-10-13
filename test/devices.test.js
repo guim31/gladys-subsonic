@@ -429,15 +429,14 @@ test('the heavy artist list is fetched once while the library is unchanged', asy
   }
   const calls = mock.calls.filter((c) => c.endpoint === 'getArtists');
   assert.equal(calls.length, 1, 'getArtists must be served from the cache after the first poll');
-  // ...and the counts are still published on every poll, so the dashboard
-  // never goes stale.
+  // ...and the counts reach Gladys once: an unchanged value is not sent
+  // again (publishChangedStates).
   const albums = fake.published.filter(
     (p) => p.featureExternalId === 'ext:test-integration:server:music-example-com:album-count',
   );
-  assert.equal(albums.length, 3);
   assert.deepEqual(
     albums.map((p) => p.state),
-    [5, 5, 5],
+    [5],
   );
 });
 
@@ -795,10 +794,11 @@ test('jukebox widget previous/next skip in the queue, refused past its ends', as
   } finally {
     srv.restore();
   }
-  // A skip starts playing: the state Gladys shows follows.
+  // A skip starts playing: the state Gladys shows follows — sent once, the
+  // second skip leaves it unchanged (deduplicated like the poll).
   assert.deepEqual(
     fake.published.map((p) => p.state),
-    [1, 1],
+    [1],
   );
 });
 

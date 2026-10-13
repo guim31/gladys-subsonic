@@ -31,10 +31,14 @@ import {
 import { isConfigured, pollFrequencyMs } from '../config.js';
 import { LIBRARY_ACTION, fit } from '../widgets.js';
 import { TEXT, MESSAGES, thrown } from '../i18n.js';
+import { createIssueLog } from '../issues.js';
 
 const DEVICE_TYPE = 'server';
 
 const logger = createLogger({ name: DEVICE_TYPE });
+
+// Polled every minute or faster: a failure that lasts is said once.
+const issues = createIssueLog(logger);
 
 /** Feature keys of the server device (the `external_id` suffixes). */
 export const SERVER_FEATURE = {
@@ -155,7 +159,7 @@ async function fetchCoverArt(config, coverArtId) {
     }
     logger.debug(`Cover art at ${size}px is ${image.length} bytes, trying smaller`);
   }
-  logger.warn(`Cover art ${coverArtId} stays above ${MAX_IMAGE_SIZE} bytes, skipped`);
+  issues.fail('cover-size', `Cover art ${coverArtId} stays above ${MAX_IMAGE_SIZE} bytes, skipped`);
   return smallest !== null && smallest.length <= MAX_IMAGE_SIZE ? smallest : null;
 }
 
@@ -184,8 +188,9 @@ async function publishCoverArt(gladys, config, entry) {
   if (image === null && wantedId !== IDLE_COVER_ID) {
     try {
       image = await fetchCoverArt(config, wantedId);
+      issues.ok('cover-fetch', 'Cover art available again');
     } catch (err) {
-      logger.warn(`Cover art unavailable (${err.message})`);
+      issues.fail('cover-fetch', `Cover art unavailable (${err.message})`);
       image = null;
     }
   }
@@ -204,15 +209,16 @@ async function publishCoverArt(gladys, config, entry) {
     const deviceExternalId = gladys.externalIds(DEVICE_TYPE, platformId).device;
     await gladys.publishCameraImage(deviceExternalId, image);
     coverArtCache = { platformId, coverArtId: wantedId, image, publishedAt: Date.now() };
+    issues.ok('cover-publish', 'Cover art accepted by Gladys again');
     if (!alreadyOnScreen) {
-      logger.info(
+      logger.debug(
         wantedId === IDLE_COVER_ID
           ? 'Nothing playing: published the placeholder cover'
           : `Cover art published for ${entry?.album ?? wantedId}`,
       );
     }
   } catch (err) {
-    logger.warn(`Cover art could not be published (${err.message})`);
+    issues.fail('cover-publish', `Cover art could not be published (${err.message})`);
   }
 }
 
@@ -258,9 +264,15 @@ export function formatNowPlaying(entries) {
  */
 export async function readScanStatus(config) {
   try {
-    return await getScanStatus(config);
+    const status = await getScanStatus(config);
+    issues.ok('scan-status', 'getScanStatus answers again');
+    return status;
   } catch (err) {
-    logger.warn(`getScanStatus unavailable (${err.message}), falling back to timed refresh`);
+    // Refused for good to a non-admin user on some servers: said once.
+    issues.fail(
+      'scan-status',
+      `getScanStatus unavailable (${err.message}), falling back to timed refresh`,
+    );
     return null;
   }
 }
@@ -294,7 +306,7 @@ async function readLibraryCounts(config, scanStatus) {
     artistCount: artists.length,
     albumCount: artists.reduce((total, artist) => total + (artist.albumCount ?? 0), 0),
   };
-  logger.info(
+  logger.debug(
     `Library read: ${libraryCache.artistCount} artist(s), ${libraryCache.albumCount} album(s)`,
   );
   return libraryCache;
@@ -305,6 +317,12 @@ export const server = {
 
   deviceExternalId(gladys, config) {
     return gladys.externalIds(DEVICE_TYPE, serverPlatformId(config)).device;
+  },
+
+  // The device was just created or updated in Gladys: an image sent before
+  // went nowhere, so the next poll sends the cover again.
+  forgetPublished() {
+    coverArtCache = null;
   },
 
   buildDevice(gladys, config) {
@@ -382,7 +400,7 @@ export const server = {
     const library = await readLibraryCounts(config, scanStatus);
     const nowPlayingText = formatNowPlaying(nowPlaying);
 
-    logger.info(`Server polled: ${nowPlaying.length} active stream(s) — ${nowPlayingText}`);
+    logger.debug(`Server polled: ${nowPlaying.length} active stream(s) — ${nowPlayingText}`);
 
     const states = [
       { device_feature_external_id: ids.feature(FEATURE.ACTIVE_STREAMS), state: nowPlaying.length },
@@ -400,7 +418,10 @@ export const server = {
       });
     }
 
-    await gladys.publishStates(states);
+    // Only the values that changed reach Gladys (each state re-evaluates the
+    // scenes, 300 a minute at most); the SDK forgets them when the device is
+    // created or updated, so a new device gets everything again.
+    await gladys.publishChangedStates(states);
 
     // After the states: the cover art travels on its own channel, and a
     // failure there must not cost us the sensors.
@@ -466,7 +487,8 @@ export const server = {
     if (!isConfigured(config)) {
       throw new Error(thrown(TEXT.serverNotConfigured));
     }
-    logger.info('Widget scan -> starting a library scan');
+    // index.js already logged the tap.
+    logger.debug('Widget scan -> starting a library scan');
     return runScan(config, { widget: true });
   },
 };
