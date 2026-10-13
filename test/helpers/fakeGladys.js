@@ -1,59 +1,53 @@
 // -----------------------------------------------------------------------------
-// Minimal in-memory stand-in for the Gladys SDK object, for unit tests.
+// The SDK's fake Gladys (`@gladysassistant/integration-sdk/testing`), with the
+// short views the device tests assert on.
 //
-// It reproduces the only surface the device modules rely on:
-//   - externalIds(type, platformId) -> { device, feature(key) }
-//   - publishState / publishStates   -> record calls so tests can assert them
-//   - setConnectionStatus            -> record calls so tests can assert them
-// This lets us test the pure "wiring" logic (discovery payloads, dispatch)
-// without a running Gladys server or a real WebSocket.
+// It is a REAL GladysIntegration whose transport is an in-memory Gladys: the
+// payloads are checked like the host API does (external id prefix, numeric
+// `state` or string `text`, known category/type, poll frequency), and
+// publishChangedStates deduplicates for real. Feature ids carry the SDK
+// prefix: `ext:test-integration:server:<platform>:<key>`.
+//   - published          -> every accepted state, `{ featureExternalId, state|text }`
+//   - cameraImages       -> every accepted image, `{ deviceExternalId, image }`
+//   - connectionStatuses -> every published status, `{ connected, message? }`
 // -----------------------------------------------------------------------------
 
-export function createFakeGladys() {
-  const published = [];
-  const connectionStatuses = [];
-  const cameraImages = [];
+import { createFakeGladys as createSdkFakeGladys } from '@gladysassistant/integration-sdk/testing';
 
-  return {
-    published,
-    connectionStatuses,
-    cameraImages,
+/** Prefix the SDK fake puts in front of every external id. */
+export const ID_PREFIX = 'ext:test-integration:';
 
-    async publishCameraImage(deviceExternalId, image) {
-      cameraImages.push({ deviceExternalId, image });
+/**
+ * @param {object} [options] passed to the SDK's createFakeGladys (devices, config...)
+ */
+export function createFakeGladys(options = {}) {
+  const gladys = createSdkFakeGladys(options);
+  Object.defineProperties(gladys, {
+    published: {
+      get: () =>
+        gladys.fake.states.map((s) => {
+          const entry = { featureExternalId: s.device_feature_external_id };
+          if (s.state !== undefined) {
+            entry.state = s.state;
+          }
+          if (s.text !== undefined) {
+            entry.text = s.text;
+          }
+          return entry;
+        }),
     },
-
-    externalIds(type, platformId) {
-      const device = `${type}:${platformId}`;
-      return {
-        device,
-        feature: (key) => `${device}:${key}`,
-      };
+    cameraImages: {
+      get: () =>
+        gladys.fake.cameraImages.map((c) => ({
+          deviceExternalId: c.device_external_id,
+          image: c.image,
+        })),
     },
-
-    async publishState(featureExternalId, state) {
-      published.push({ featureExternalId, state });
+    connectionStatuses: {
+      get: () => gladys.fake.connectionStatuses,
     },
-
-    async publishStates(states) {
-      for (const s of states) {
-        // A state carries either a numeric `state` or a string `text`: keep
-        // only the one that is set, so assertions stay on the real shape.
-        const entry = { featureExternalId: s.device_feature_external_id };
-        if (s.state !== undefined) {
-          entry.state = s.state;
-        }
-        if (s.text !== undefined) {
-          entry.text = s.text;
-        }
-        published.push(entry);
-      }
-    },
-
-    async setConnectionStatus(connected, message) {
-      connectionStatuses.push({ connected, message });
-    },
-  };
+  });
+  return gladys;
 }
 
 /**
