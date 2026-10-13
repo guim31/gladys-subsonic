@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPoller } from '../src/poller.js';
 import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { resetLibraryCache } from '../src/devices/server.js';
+import { resetLibraryCache, STATE_HEARTBEAT_MS } from '../src/devices/server.js';
 import { normalizeConfig } from '../src/config.js';
 import { createFakeGladys, mockSubsonicFetch, ID_PREFIX } from './helpers/fakeGladys.js';
 
@@ -97,20 +97,38 @@ test("the core's onPoll is a fallback: it never reads the server twice in a peri
   assert.deepEqual(await gladys.fake.poll(serverDevice), { success: true });
   assert.equal(reads(), 1);
 
-  // 40 s after the timer, more than half a period: the core's poll runs...
-  t.mock.timers.tick(30_000);
+  // A device created at 10 s keeps that poll_frequency for life (#3198):
+  // the core asks every 10 s, it never reads the server while the timer runs.
+  for (let i = 0; i < 4; i += 1) {
+    t.mock.timers.tick(10_000);
+    assert.deepEqual(await gladys.fake.poll(serverDevice), { success: true });
+  }
+  assert.equal(reads(), 1, '50 s after the timer: still nothing');
+
+  t.mock.timers.tick(10_000);
+  await settle();
+  assert.equal(reads(), 2, 'the timer, one period later');
   assert.deepEqual(await gladys.fake.poll(serverDevice), { success: true });
   assert.equal(reads(), 2);
 
-  // ...and the timer, firing 20 s later, skips it.
+  // The timer stalls: the core takes over, once a period.
+  poller.stop();
+  t.mock.timers.tick(50_000);
+  await gladys.fake.poll(serverDevice);
+  assert.equal(reads(), 2);
+  t.mock.timers.tick(10_000);
+  await gladys.fake.poll(serverDevice);
+  assert.equal(reads(), 3);
+});
+
+test('a core poll arriving more than half a period after the timer is not doubled', async (t) => {
+  const { gladys, poller, reads, serverDevice } = await setup(t);
+  await poller.restart();
+  t.mock.timers.tick(40_000);
+  await gladys.fake.poll(serverDevice);
   t.mock.timers.tick(20_000);
   await settle();
-  assert.equal(reads(), 2);
-
-  // The next period is the timer's again.
-  t.mock.timers.tick(60_000);
-  await settle();
-  assert.equal(reads(), 3);
+  assert.equal(reads(), 2, 'one read per period');
 });
 
 test("the core's onPoll still polls on its own", async (t) => {
@@ -147,10 +165,39 @@ test('a device just added gets all its states at once', async (t) => {
 
   // Seconds later, the user adds it again (deleted then re-created): the SDK
   // forgot what it sent, the poller sends everything, timer or not.
+  const images = gladys.cameraImages.length;
   t.mock.timers.tick(5_000);
   await gladys.fake.deviceCreated(serverDevice);
   assert.equal(reads(), 2);
   assert.equal(gladys.fake.states.length, first * 2);
+  assert.equal(gladys.cameraImages.length, images + 1, 'the cover is sent again too');
+});
+
+test('a device created while a poll is in progress is polled again after it', async (t) => {
+  const { gladys, poller, reads, serverDevice } = await setup(t);
+  await poller.restart();
+  const first = gladys.fake.states.length;
+  const images = gladys.cameraImages.length;
+  t.mock.timers.tick(55_000);
+  // The core's poll is still in flight when Gladys says the device was created.
+  const polling = gladys.fake.poll(serverDevice);
+  const created = gladys.fake.deviceCreated(serverDevice);
+  await Promise.all([polling, created]);
+  assert.equal(reads(), 3, 'the poll in progress, then a new one');
+  assert.ok(gladys.fake.states.length >= first * 2, 'every state sent after the creation');
+  assert.ok(gladys.cameraImages.length > images, 'the cover is sent again');
+});
+
+test('unchanged values are sent again once per heartbeat (no "no recent value")', async (t) => {
+  const { gladys, poller } = await setup(t);
+  await poller.restart();
+  const first = gladys.fake.states.length;
+  t.mock.timers.tick(60_000);
+  await settle();
+  assert.equal(gladys.fake.states.length, first);
+  t.mock.timers.tick(STATE_HEARTBEAT_MS);
+  await settle();
+  assert.ok(gladys.fake.states.length >= first * 2, 'everything sent again after 12 h');
 });
 
 test('a failing server is said once, and its return once', async (t) => {

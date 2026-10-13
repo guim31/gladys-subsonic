@@ -430,7 +430,7 @@ test('the heavy artist list is fetched once while the library is unchanged', asy
   const calls = mock.calls.filter((c) => c.endpoint === 'getArtists');
   assert.equal(calls.length, 1, 'getArtists must be served from the cache after the first poll');
   // ...and the counts reach Gladys once: an unchanged value is not sent
-  // again (publishChangedStates).
+  // again before the heartbeat (publishChangedStates, see poller.test.js).
   const albums = fake.published.filter(
     (p) => p.featureExternalId === 'ext:test-integration:server:music-example-com:album-count',
   );

@@ -135,7 +135,7 @@ pochette s'affiche sans image.
   Si les valeurs restent vides, le serveur ne répond pas : **Tester la
   connexion** dit pourquoi, et les journaux de l'intégration le disent une
   fois (et une fois encore quand il répond de nouveau). Une valeur qui ne
-  change pas n'est pas renvoyée : sa date peut être ancienne.
+  change pas n'est renvoyée qu'une fois toutes les 12 h.
 - **« Le serveur refuse le scan pour ce compte »** : lancer un scan est réservé
   aux administrateurs (c'est le cas dans Navidrome). Ce n'est pas gênant : le
   bouton n'est qu'un raccourci, le serveur scanne selon sa propre planification

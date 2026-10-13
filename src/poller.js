@@ -8,9 +8,11 @@
 // (GladysAssistant/Gladys#3198). So the container polls by itself, at the
 // configured pace, and the core's onPoll stays as a fallback.
 //
-// No double work: a device polled less than half a period ago is skipped,
-// whoever asks (the timer or the core). Whatever the phase between the two
-// clocks, each period then reads the server once.
+// No double work: the timer skips a device polled less than half a period
+// ago (by the core), and the core's onPoll skips a device polled less than
+// 90 % of a period ago — so while the timer runs, the core never reads the
+// server, even when the device kept a shorter poll_frequency from its
+// creation (Gladys#3198); it takes over only if the timer stalls.
 //
 // Only the devices the user added to Gladys are polled (`gladys.devices`):
 // the core drops the states of a device it does not know, so reading the
@@ -52,18 +54,29 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
   }
 
   /**
-   * Poll one device type, unless it was polled less than half a period ago.
+   * Poll one device type, unless it was polled less than `minGap` periods ago.
+   * Forced (new config, device just created): waits for a poll in progress,
+   * which may predate the change, then polls again with the current config.
    * @throws the poll error (logged once while it lasts)
    */
-  async function pollBlueprint(bp, config, { force = false } = {}) {
-    const running = inFlight.get(bp.key);
+  async function pollBlueprint(bp, { force = false, minGap = 0.5 } = {}) {
+    let running = inFlight.get(bp.key);
+    while (running && force) {
+      await running.catch(() => {});
+      running = inFlight.get(bp.key);
+    }
     if (running) {
       return running;
     }
     const last = lastPolledAt.get(bp.key);
-    if (!force && last !== undefined && now() - last < periodMs() / 2) {
+    if (!force && last !== undefined && now() - last < periodMs() * minGap) {
       logger.debug(`${bp.key}: polled ${now() - last} ms ago, skipped`);
       return undefined;
+    }
+    const config = getConfig();
+    if (force) {
+      // Whatever the poll in progress stored (a cover) predates the change.
+      bp.forgetPublished?.();
     }
     lastPolledAt.set(bp.key, now());
     const run = (async () => {
@@ -89,9 +102,8 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
       logger.debug('Gladys unreachable: poll skipped');
       return;
     }
-    const config = getConfig();
     await Promise.all(
-      createdBlueprints(config).map((bp) => pollBlueprint(bp, config, { force }).catch(() => {})),
+      createdBlueprints(getConfig()).map((bp) => pollBlueprint(bp, { force }).catch(() => {})),
     );
   }
 
@@ -103,8 +115,13 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
     }
     timer = setTimeout(async () => {
       timer = null;
-      await cycle();
-      schedule();
+      try {
+        await cycle();
+      } catch (err) {
+        logger.error(`Polling cycle failed (${err.message})`);
+      } finally {
+        schedule();
+      }
     }, periodMs());
   }
 
@@ -117,12 +134,8 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
      */
     register() {
       gladys.onPoll((device) => api.pollFromCore(device));
-      const sendStatesNow = async (device) => {
-        findBlueprintByDevice(gladys, device, getConfig())?.forgetPublished?.();
-        await api.pollDevice(device);
-      };
-      gladys.onDeviceCreated(sendStatesNow);
-      gladys.onDeviceUpdated(sendStatesNow);
+      gladys.onDeviceCreated((device) => api.pollDevice(device));
+      gladys.onDeviceUpdated((device) => api.pollDevice(device));
     },
 
     /**
@@ -141,13 +154,12 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
      * @param {{ external_id: string }} device
      */
     async pollFromCore(device) {
-      const config = getConfig();
-      const bp = findBlueprintByDevice(gladys, device, config);
+      const bp = findBlueprintByDevice(gladys, device, getConfig());
       if (!bp || typeof bp.onPoll !== 'function') {
         logger.debug(`onPoll ignored (no polling) for ${device.external_id}`);
         return;
       }
-      await pollBlueprint(bp, config);
+      await pollBlueprint(bp, { minGap: 0.9 });
     },
 
     /**
@@ -156,12 +168,11 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
      * @param {{ external_id: string }} device
      */
     async pollDevice(device) {
-      const config = getConfig();
-      const bp = findBlueprintByDevice(gladys, device, config);
+      const bp = findBlueprintByDevice(gladys, device, getConfig());
       if (!bp || typeof bp.onPoll !== 'function') {
         return;
       }
-      await pollBlueprint(bp, config, { force: true }).catch(() => {});
+      await pollBlueprint(bp, { force: true }).catch(() => {});
     },
 
     stop() {

@@ -114,10 +114,19 @@ export const NOW_PLAYING_MAX_AGE_MS = 30 * 1000;
 // on-demand path can answer even when nothing is playing any more.
 let coverArtCache = null;
 
+// The last cover found too big for Gladys: warned about once.
+let lastOversizedCover = null;
+
+// Unchanged values are not sent again, except this often: the core shows
+// "no recent value" on a sensor whose last value is older than 48 h, and the
+// library counts can stay put for days.
+export const STATE_HEARTBEAT_MS = 12 * 60 * 60 * 1000;
+
 /** Drop the cached library counts, cover art and now playing list (tests). */
 export function resetLibraryCache() {
   libraryCache = null;
   coverArtCache = null;
+  lastOversizedCover = null;
   nowPlayingCache = null;
 }
 
@@ -159,7 +168,14 @@ async function fetchCoverArt(config, coverArtId) {
     }
     logger.debug(`Cover art at ${size}px is ${image.length} bytes, trying smaller`);
   }
-  issues.fail('cover-size', `Cover art ${coverArtId} stays above ${MAX_IMAGE_SIZE} bytes, skipped`);
+  // A property of this cover, not an outage: said once per cover.
+  const message = `Cover art ${coverArtId} stays above ${MAX_IMAGE_SIZE} bytes, skipped`;
+  if (coverArtId === lastOversizedCover) {
+    logger.debug(message);
+  } else {
+    lastOversizedCover = coverArtId;
+    logger.warn(message);
+  }
   return smallest !== null && smallest.length <= MAX_IMAGE_SIZE ? smallest : null;
 }
 
@@ -321,8 +337,11 @@ export const server = {
 
   // The device was just created or updated in Gladys: an image sent before
   // went nowhere, so the next poll sends the cover again.
+  // The image stays as the fallback of onGetImage and of "nothing playing".
   forgetPublished() {
-    coverArtCache = null;
+    if (coverArtCache !== null) {
+      coverArtCache.publishedAt = 0;
+    }
   },
 
   buildDevice(gladys, config) {
@@ -419,9 +438,10 @@ export const server = {
     }
 
     // Only the values that changed reach Gladys (each state re-evaluates the
-    // scenes, 300 a minute at most); the SDK forgets them when the device is
-    // created or updated, so a new device gets everything again.
-    await gladys.publishChangedStates(states);
+    // scenes, 300 a minute at most), plus every value once per heartbeat; the
+    // SDK forgets them when the device is created or updated, so a new device
+    // gets everything again.
+    await gladys.publishChangedStates(states, { heartbeat: STATE_HEARTBEAT_MS });
 
     // After the states: the cover art travels on its own channel, and a
     // failure there must not cost us the sensors.

@@ -20,8 +20,11 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
 - **Le conteneur sonde lui-même** (`src/poller.js`) : Gladys 5.2.0 ne sonde un appareil que s'il a
   été créé avec `should_poll: true` et un `poll_frequency` valide, et un appareil garde à vie les
   champs de sa création (Gladys#3198, correctif #3199 non publié). Les appareils gardent
-  `should_poll: true` et l'`onPoll` du cœur reste un repli : un appareil sondé il y a moins d'une
-  demi-période est sauté, d'où qu'elle vienne, donc une seule lecture du serveur par période.
+  `should_poll: true` et l'`onPoll` du cœur reste un repli : il saute un appareil sondé il y a
+  moins de 90 % d'une période (un appareil créé à 10 s garde ce rythme côté cœur même si la config
+  passe à 60 s), le minuteur saute un appareil sondé il y a moins d'une demi-période ; le cœur ne
+  lit donc le serveur que si le minuteur cale. Un sondage forcé (création, config) attend celui en
+  cours puis relance avec la config du moment.
   Seuls les appareils **ajoutés** à Gladys (`gladys.devices`) sont sondés, comme quand seul le cœur
   sondait. Sondage immédiat à la (re)connexion, au changement de config et à la création ou mise à
   jour d'un appareil (`poller.register()` pose `onPoll`, `onDeviceCreated`, `onDeviceUpdated`) ;
@@ -29,7 +32,10 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
 - **États dédupliqués** : tout passe par `publishChangedStates`, y compris les commandes du
   jukebox (`publishOne`) : une seule mémoire de ce que Gladys a, sinon un sondage sauterait une
   valeur qu'une commande a changée entre-temps. Le SDK oublie cette mémoire à la création ou mise à
-  jour d'un appareil ; `server.forgetPublished()` fait de même pour la pochette (canal caméra).
+  jour d'un appareil ; `server.forgetPublished()` fait de même pour la pochette (canal caméra),
+  en gardant l'image en secours. **Heartbeat 12 h** (`STATE_HEARTBEAT_MS`) : le cœur affiche « Pas
+  de valeur récente » au-delà de 48 h sans valeur (`last_value_changed`), et les compteurs de la
+  bibliothèque peuvent rester fixes des jours.
 - **Logs** : rien en info pour un cycle normal (`Server polled`, lecture de la bibliothèque,
   pochette publiée passent en debug, `LOG_LEVEL=debug` pour les voir). Les échecs répétés passent
   par `createIssueLog` (`src/issues.js`) : un warn au premier échec, debug ensuite, une ligne info

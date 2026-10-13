@@ -124,7 +124,7 @@ an image.
   default), whatever Gladys' own polling does. If the values stay empty, the
   server does not answer: **Test the connection** says why, and the
   integration logs say it once (and once more when it answers again).
-  Values that do not change are not sent again, so their date can be old.
+  A value that does not change is only sent again every 12 hours.
 - **"The server refuses a scan from this account"**: starting a scan is
   reserved to administrators (Navidrome does so). It does not matter: the
   button is only a shortcut, the server scans on its own schedule and the

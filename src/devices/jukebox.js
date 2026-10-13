@@ -19,7 +19,7 @@ import {
 } from '@gladysassistant/integration-sdk';
 import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } from '../subsonic.js';
 import { isConfigured, pollFrequencyMs } from '../config.js';
-import { serverPlatformId } from './server.js';
+import { serverPlatformId, STATE_HEARTBEAT_MS } from './server.js';
 import { JUKEBOX_ACTION, RANDOM_SONG_COUNT } from '../widgets.js';
 import { TEXT, MESSAGES, thrown } from '../i18n.js';
 
@@ -163,7 +163,7 @@ export const jukebox = {
         state: Math.round(status.gain * 100),
       });
     }
-    await gladys.publishChangedStates(states);
+    await gladys.publishChangedStates(states, { heartbeat: STATE_HEARTBEAT_MS });
   },
 
   actions: {
