@@ -129,11 +129,13 @@ pochette s'affiche sans image.
   pas sur l'appareil où tourne Gladys. Vérifiez `Jukebox.Enabled` et la
   sortie audio de l'hôte (accès au périphérique audio du conteneur Docker le
   cas échéant).
-- **Les capteurs affichent « Pas de valeur récente »** : ils n'ont encore
-  jamais été relevés. Après une mise à jour de l'intégration, retournez dans
-  l'onglet **Découverte** et recliquez sur l'appareil : cela réapplique sa
-  définition (dont l'activation du relevé périodique) à l'appareil déjà créé.
-  La première valeur arrive au relevé suivant (60 s par défaut).
+- **Les capteurs affichent « Pas de valeur récente »** : l'intégration
+  interroge elle-même le serveur dès l'ajout de l'appareil, puis à
+  l'intervalle choisi (60 s par défaut), quoi que fasse le relevé de Gladys.
+  Si les valeurs restent vides, le serveur ne répond pas : **Tester la
+  connexion** dit pourquoi, et les journaux de l'intégration le disent une
+  fois (et une fois encore quand il répond de nouveau). Une valeur qui ne
+  change pas n'est pas renvoyée : sa date peut être ancienne.
 - **« Le serveur refuse le scan pour ce compte »** : lancer un scan est réservé
   aux administrateurs (c'est le cas dans Navidrome). Ce n'est pas gênant : le
   bouton n'est qu'un raccourci, le serveur scanne selon sa propre planification
