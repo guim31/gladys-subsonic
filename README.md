@@ -5,8 +5,8 @@ serveurs musicaux compatibles avec l'[API Subsonic](https://www.subsonic.org/pag
 **[Navidrome](https://www.navidrome.org)**, Airsonic-Advanced, Gonic, LMS,
 Subsonic…
 
-Requiert Gladys 5.1 ou plus récent (les versions 1.0.x restent compatibles
-Gladys ≥ 4.86).
+Requiert Gladys 5.3 ou plus récent depuis la 1.3.0 (les versions 1.1.x et 1.2.x
+restent compatibles Gladys ≥ 5.1, les 1.0.x Gladys ≥ 4.86).
 
 Construite à partir du
 [template officiel JavaScript](https://github.com/GladysAssistant/integration-template-js)
@@ -14,10 +14,34 @@ et du SDK [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistan
 
 ## Fonctionnalités
 
-| Appareil             | Fonctionnalités                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Serveur Subsonic** | Capteurs : en écoute (texte), pochette de l'album (canal image), lectures en cours, morceaux/artistes/albums de la bibliothèque |
-| **Jukebox Subsonic** | Lecture/pause, précédent/suivant, volume, état de lecture — via `jukeboxControl` (optionnel)                                    |
+| Appareil             | Fonctionnalités                                                                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Serveur Subsonic** | Capteurs : en écoute (texte), pochette de l'album (canal image), lectures en cours, morceaux/artistes/albums de la bibliothèque                                                        |
+| **Jukebox Subsonic** | Lecteur Musique de Gladys 5.3 : titre, artiste, album, pochette, durée, position (déplaçable), état de lecture pilotable, volume, précédent/suivant — via `jukeboxControl` (optionnel) |
+
+### Lecteur Musique de Gladys 5.3
+
+Le jukebox est un lecteur du widget **Musique** de Gladys 5.3 (manifeste
+`"music": { "browse", "search", "queue", "append" }`, SDK 0.16,
+`publishNowPlaying`) :
+
+- en cours de lecture : titre, artiste, album, pochette (demandée au serveur
+  en 300 px, 128 px pour les listes, lue avec les identifiants), durée,
+  position (une écriture déplace la lecture : `skip` avec `offset`), état de
+  lecture inscriptible (0 pause, 1 lecture, 2 arrêt), volume ; pas
+  d'aléatoire, de répétition ni de sourdine (absents de l'API jukebox) ;
+- panneau : dossiers Albums, Artistes, Playlists, recherche (`search3` et les
+  playlists par nom), file d'attente du jukebox, lecture « maintenant », « à la
+  suite » et « en fin de file » ; action de scène `music.play-media` ;
+- le jukebox ne pousse rien : relevé du `status` à l'intervalle choisi, file
+  (`get`) relue quand l'index change, après une commande ou chaque minute, et
+  une relecture juste après la fin prévue du morceau en cours ;
+- un jukebox déjà ajouté reçoit les nouvelles fonctionnalités par **Mettre à
+  jour** dans l'onglet Découverte (mêmes identifiants : scènes et tableaux de
+  bord conservés) ; l'arrêt vaut désormais 2 (IDLE), plus 0.
+
+Le widget **Musique** du cœur passe en premier ; le widget maison **Jukebox**
+reste (bouton de lecture aléatoire, file en un coup d'œil).
 
 Widgets de tableau de bord (Gladys ≥ 5.1) :
 
@@ -58,6 +82,7 @@ configuration.
 │  ├─ config.js                      # valeurs par défaut + normalisation
 │  ├─ widgets.js                     # contenus des widgets (fonctions pures)
 │  ├─ covers.js                      # pochettes des widgets (clés, registre, octets)
+│  ├─ catalog.js                     # panneau Musique de Gladys 5.3 (parcours, recherche, file, pochettes)
 │  └─ devices/
 │     ├─ index.js                    # registre des appareils
 │     ├─ server.js                   # capteurs du serveur + actions scan/test

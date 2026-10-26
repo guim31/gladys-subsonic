@@ -18,6 +18,69 @@ export const LANGUAGES = ['en', 'fr', 'de', 'es'];
 
 /** Fixed texts. */
 export const TEXT = {
+  // Music panel of Gladys 5.3 (in the configured language)
+  folderAlbums: { en: 'Albums', fr: 'Albums', de: 'Alben', es: 'Álbumes' },
+  folderArtists: { en: 'Artists', fr: 'Artistes', de: 'Interpreten', es: 'Artistas' },
+  folderPlaylists: {
+    en: 'Playlists',
+    fr: 'Playlists',
+    de: 'Playlists',
+    es: 'Listas de reproducción',
+  },
+  notJukebox: {
+    en: 'Only the Subsonic jukebox plays music: enable it in the integration configuration.',
+    fr: "Seul le jukebox Subsonic joue de la musique : activez-le dans la configuration de l'intégration.",
+    de: 'Nur die Subsonic-Jukebox spielt Musik: Aktiviere sie in der Konfiguration der Integration.',
+    es: 'Solo la jukebox de Subsonic reproduce música: actívela en la configuración de la integración.',
+  },
+  gone: {
+    en: 'This item is no longer in the library.',
+    fr: "Cet élément n'est plus dans la bibliothèque.",
+    de: 'Dieses Element ist nicht mehr in der Bibliothek.',
+    es: 'Este elemento ya no está en la biblioteca.',
+  },
+  notBrowsable: {
+    en: 'This item cannot be opened.',
+    fr: 'Cet élément ne peut pas être ouvert.',
+    de: 'Dieses Element kann nicht geöffnet werden.',
+    es: 'Este elemento no se puede abrir.',
+  },
+  notPlayable: {
+    en: 'The jukebox cannot play this item.',
+    fr: 'Le jukebox ne peut pas jouer cet élément.',
+    de: 'Die Jukebox kann dieses Element nicht abspielen.',
+    es: 'La jukebox no puede reproducir este elemento.',
+  },
+  emptyMedia: {
+    en: 'Nothing to play: this item holds no song.',
+    fr: 'Rien à jouer : cet élément ne contient aucun morceau.',
+    de: 'Nichts abzuspielen: Dieses Element enthält keinen Titel.',
+    es: 'Nada que reproducir: este elemento no contiene ninguna canción.',
+  },
+  badMode: {
+    en: 'Unknown play mode.',
+    fr: 'Mode de lecture inconnu.',
+    de: 'Unbekannter Wiedergabemodus.',
+    es: 'Modo de reproducción desconocido.',
+  },
+  notInQueue: {
+    en: 'This song is no longer in the jukebox queue.',
+    fr: "Ce morceau n'est plus dans la file du jukebox.",
+    de: 'Dieser Titel ist nicht mehr in der Warteschlange der Jukebox.',
+    es: 'Esta canción ya no está en la cola de la jukebox.',
+  },
+  nothingLoaded: {
+    en: 'Nothing is loaded on the jukebox.',
+    fr: 'Rien n’est chargé sur le jukebox.',
+    de: 'Auf der Jukebox ist nichts geladen.',
+    es: 'No hay nada cargado en la jukebox.',
+  },
+  badPlaybackState: {
+    en: 'The jukebox can play, pause or stop, nothing else.',
+    fr: 'Le jukebox sait lire, mettre en pause ou arrêter, rien d’autre.',
+    de: 'Die Jukebox kann abspielen, pausieren oder stoppen, sonst nichts.',
+    es: 'La jukebox puede reproducir, pausar o detener, nada más.',
+  },
   // Widgets
   streams: { en: 'Streams', fr: 'Lectures', de: 'Streams', es: 'Reproducciones' },
   nothingPlaying: {
@@ -264,4 +327,16 @@ export const MESSAGES = {
 export function thrown(text, detail) {
   const joined = LANGUAGES.map((lang) => text[lang]).join(' / ');
   return detail ? `${joined}: ${detail}` : joined;
+}
+
+/**
+ * A text in one language (the `language` of the configuration), English
+ * when the language is unknown: for what the core shows as is, like the
+ * music panel's folders and errors.
+ * @param {{ en: string, fr: string, de: string, es: string }} text
+ * @param {string} [language]
+ * @returns {string}
+ */
+export function localized(text, language) {
+  return text[language] ?? text.en;
 }

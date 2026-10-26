@@ -2,7 +2,7 @@
 
 Reliez Gladys à un serveur musical compatible Subsonic : Navidrome, Airsonic, Gonic...
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.15.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.16.0, `gladys_version` `>=5.3.0` depuis la 1.3.0). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
@@ -48,8 +48,56 @@ lint et le validateur du store ont tourné. Le passage à `>=5.1.0` coupe les mi
   `getArtists` répond l'erreur 70 « Library not found or empty » ; sans parade tout le sondage
   échouait et aucun état ne partait. `getArtists` la lit comme une bibliothèque vide (`[]`).
 - **Publication** : ce dépôt n'a ni `CHANGELOG.md` ni `.github/scripts/release.mjs` :
-  `outils/release.sh` ne s'y applique pas, la Release passe par le workflow (Actions → Release),
-  notes tirées des PR.
+  `outils/release.sh` déclenche le workflow Release ; ses notes viennent de
+  `.github/release-notes/vX.Y.Z.md` s'il existe (ajouté avec la PR), sinon des PR.
+
+## Lecteur Musique de Gladys 5.3 (26/10/2026, version 1.3.0)
+
+Vérifié contre Navidrome 0.64.2 réel en Docker (jukebox activé, mpv en
+`--ao=null`, bibliothèque générée par ffmpeg), `index.js` réel dans le
+conteneur verrouillé, à travers le faux Gladys du SDK (54 contrôles).
+
+- **Seul le jukebox est un lecteur** : c'est le seul que l'API pilote. Les
+  écoutes des applications (`getNowPlaying`) restent sur l'appareil serveur
+  (texte, pochette caméra, widget `now_playing`), en lecture seule ; aucun
+  appareil par client : sans transport, l'action `music.play-media` du cœur
+  (qui liste tout appareil à fonctionnalité `music` d'une intégration qui
+  déclare `browse`) proposerait des lecteurs qui ne peuvent rien jouer.
+- **Fonctionnalités** : `playback-state` (id 1.x gardé, passé par
+  `featureExternalIds`), inscriptible 0/1/2 ; `volume` (id = type) ;
+  `title`, `artist`, `album`, `artwork`, `duration`, `position` (seek par
+  `skip` avec `offset`) aux ids `${device}:${type}`. Pas de `shuffle` (le
+  `shuffle` de l'API mélange la file une fois), ni `repeat`, ni `mute`.
+- **Ce que fait le jukebox de Navidrome** (`core/playback/device.go`) :
+  `stop` est une pause ; `skip` garde lecture ou pause ; `set` = `clear` +
+  `add` et **coupe le son** ; `add` d'un id inconnu échoue en entier ;
+  `remove` d'un autre morceau ne touche pas la lecture mais l'index courant
+  est **retrouvé par id** (premier doublon) ; en fin de file le dernier
+  morceau reste courant, fermé (`playing` false, position 0). Réservé aux
+  administrateurs par défaut (`Jukebox.AdminOnly`, erreur 50).
+- **État 2 (IDLE)** : file vide, fin de file (vu jouer, puis arrêté à 0 sur le
+  dernier morceau, hors relecture qui suit une commande), ou arrêt demandé
+  par Gladys (pause + retour à 0, retenu tant que le jukebox ne bouge pas).
+- **Relevés** : `status` à chaque relevé, `get` (toute la file) seulement si
+  l'index change, après une commande, ou chaque minute ; une relecture
+  `poller.refresh('jukebox')` est programmée à la fin prévue du morceau quand
+  elle tombe avant le prochain relevé. Un relevé forcé (connexion, config,
+  appareil créé ou mis à jour) oublie l'instantané `publishNowPlaying`
+  (`forgetPublished(gladys, config)`).
+- **Catalogue** (`src/catalog.js`) : ids `track:`/`album:`/`artist:`/`playlist:`
+  - id Subsonic, racines `gladys:` ; albums paginés par le serveur
+    (`getAlbumList2`, total = lus + 1 tant que la page est pleine), artistes et
+    playlists lus en entier (cache 1 min) ; morceaux lus **avant** `clear` (un id
+    disparu ne vide pas la file) ; `add` par paquets de 100 ids ; 500 morceaux au
+    plus ; « à la suite » : retrait de la queue puis réajout (≤ 50 morceaux,
+    sans doublon du morceau courant avant lui), sinon `set` + `skip` à la même
+    seconde + `start`. Langue des dossiers et des erreurs : champ `language`.
+- **Pochettes** : clé SDK `artworkKey` d'une pseudo-URL
+  `subsonic-cover://<serveur>/<taille>/<coverArt>` (jamais lue telle quelle) ;
+  `onMusicGetArtwork` la relit avec les identifiants via `widgetCoverArt`
+  (300 px pour le lecteur, 128 px pour les listes, plus petit si > 300 Ko).
+  Navidrome redimensionne (PNG 7,9 Mo → 13 Ko en 128 px) et sert un WebP
+  d'attente pour un album sans pochette : on ne publie alors pas de clé.
 
 ## Choix
 

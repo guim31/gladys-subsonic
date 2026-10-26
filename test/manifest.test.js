@@ -106,10 +106,26 @@ test('the declared widgets are exactly the ones the code serves', () => {
   }
 });
 
-test('widgets need Gladys 5.1, the poller the 0.15 SDK', () => {
-  assert.match(manifest.gladys_version, />=\s*5\.1\.0/, 'widgets need the 5.1 core');
-  // publishChangedStates and the testing entry point arrived with 0.15.
-  assert.match(packageJson.dependencies['@gladysassistant/integration-sdk'], /\^0\.15\./);
+test('the music player needs Gladys 5.3 and the 0.16 SDK', () => {
+  // The `music` field and the music feature types arrived with the 5.3 core.
+  assert.match(manifest.gladys_version, />=\s*5\.3\.0/, 'the music player needs the 5.3 core');
+  // publishNowPlaying, artworkKey and the music handlers arrived with 0.16.
+  assert.match(packageJson.dependencies['@gladysassistant/integration-sdk'], /\^0\.16\./);
+});
+
+test('the music field declares what the jukebox does', () => {
+  // browse, search, the queue, and play next / at the end.
+  assert.deepEqual(manifest.music, { browse: true, search: true, queue: true, append: true });
+});
+
+test('the language of the music panel defaults to French, in the four languages', () => {
+  const field = manifest.config_schema.find((f) => f.key === 'language');
+  assert.equal(field.type, 'select');
+  assert.equal(field.default, 'fr');
+  assert.deepEqual(
+    field.options.map((o) => o.value),
+    ['fr', 'en', 'de', 'es'],
+  );
 });
 
 test('widget declarations respect the store constraints', () => {

@@ -233,6 +233,58 @@ export async function getPlaylist(config, id) {
   return { ...playlist, entry: asArray(playlist.entry) };
 }
 
+/**
+ * A page of albums (ID3 tags), e.g. alphabetically: `type` is one of the
+ * getAlbumList2 list types, `size` at most 500 (the API bound).
+ * @param {object} config
+ * @param {{ type?: string, size?: number, offset?: number }} [options]
+ * @returns {Promise<Array<object>>}
+ */
+export async function getAlbumList2(
+  config,
+  { type = 'alphabeticalByName', size = 50, offset = 0 } = {},
+) {
+  const envelope = await request(config, 'getAlbumList2', { type, size, offset });
+  return asArray(envelope.albumList2?.album);
+}
+
+/** One album with its songs: `{ ...album, song: [...] }`. */
+export async function getAlbum(config, id) {
+  const envelope = await request(config, 'getAlbum', { id });
+  const album = envelope.album ?? {};
+  return { ...album, song: asArray(album.song) };
+}
+
+/** One artist with its albums: `{ ...artist, album: [...] }`. */
+export async function getArtist(config, id) {
+  const envelope = await request(config, 'getArtist', { id });
+  const artist = envelope.artist ?? {};
+  return { ...artist, album: asArray(artist.album) };
+}
+
+/** One song. */
+export async function getSong(config, id) {
+  const envelope = await request(config, 'getSong', { id });
+  return envelope.song ?? {};
+}
+
+/**
+ * Search artists, albums and songs by name (ID3 tags).
+ * @param {object} config
+ * @param {string} query
+ * @param {{ artistCount?: number, albumCount?: number, songCount?: number }} counts
+ * @returns {Promise<{ artist: Array<object>, album: Array<object>, song: Array<object> }>}
+ */
+export async function search3(config, query, { artistCount = 0, albumCount = 0, songCount = 0 }) {
+  const envelope = await request(config, 'search3', { query, artistCount, albumCount, songCount });
+  const result = envelope.searchResult3 ?? {};
+  return {
+    artist: asArray(result.artist),
+    album: asArray(result.album),
+    song: asArray(result.song),
+  };
+}
+
 /** Random songs from the library. */
 export async function getRandomSongs(config, size = 20) {
   const envelope = await request(config, 'getRandomSongs', { size });

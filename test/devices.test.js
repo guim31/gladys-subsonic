@@ -15,7 +15,7 @@ import {
   readNowPlaying,
   NOW_PLAYING_MAX_AGE_MS,
 } from '../src/devices/server.js';
-import { jukebox, skipQueue, playRandom } from '../src/devices/jukebox.js';
+import { jukebox, skipQueue, playRandom, resetJukeboxState } from '../src/devices/jukebox.js';
 import { normalizeConfig } from '../src/config.js';
 import { createFakeGladys, mockSubsonicFetch } from './helpers/fakeGladys.js';
 
@@ -481,29 +481,64 @@ test('a server refusing getScanStatus still publishes what it can', async () => 
   );
 });
 
-test('the jukebox music features cover commands, volume and playback state', () => {
+test('the jukebox music features: commands, volume, now playing and seek', () => {
   const device = jukebox.buildDevice(gladys, jukeboxConfig);
   const types = device.features.map((f) => f.type).sort();
-  assert.deepEqual(types, ['next', 'pause', 'play', 'playback_state', 'previous', 'volume'].sort());
+  assert.deepEqual(
+    types,
+    [
+      'next',
+      'pause',
+      'play',
+      'playback_state',
+      'previous',
+      'volume',
+      'title',
+      'artist',
+      'album',
+      'artwork',
+      'duration',
+      'position',
+    ].sort(),
+  );
   for (const feature of device.features) {
     assert.equal(feature.category, DEVICE_FEATURE_CATEGORIES.MUSIC);
+    if (!feature.read_only && !['play', 'pause', 'previous', 'next'].includes(feature.type)) {
+      assert.equal(feature.has_feedback, true, `${feature.type} is confirmed by the jukebox`);
+    }
   }
+  // The 1.x ids are kept: scenes and dashboards keep working.
   const playback = device.features.find((f) => f.type === 'playback_state');
-  assert.equal(playback.read_only, true);
+  assert.equal(
+    playback.external_id,
+    'ext:test-integration:jukebox:music-example-com:playback-state',
+  );
+  assert.equal(playback.read_only, false);
+  assert.equal(playback.max, 2);
   const volume = device.features.find((f) => f.type === 'volume');
+  assert.equal(volume.external_id, 'ext:test-integration:jukebox:music-example-com:volume');
   assert.equal(volume.max, 100);
-  assert.equal(volume.has_feedback, true);
+  const position = device.features.find((f) => f.type === 'position');
+  assert.equal(position.read_only, false);
+  assert.equal(position.unit, 'seconds');
+  for (const type of ['title', 'artist', 'album', 'artwork', 'duration']) {
+    assert.equal(device.features.find((f) => f.type === type).read_only, true, type);
+  }
 });
 
 test('jukebox volume maps 0-100 to the 0.0-1.0 gain and publishes the feedback', async () => {
   const fake = createFakeGladys();
   const mock = mockSubsonicFetch({
     jukeboxControl: (url) => {
+      if (url.searchParams.get('action') === 'get') {
+        return { jukeboxPlaylist: { currentIndex: -1, playing: false, gain: 0.4 } };
+      }
       assert.equal(url.searchParams.get('action'), 'setGain');
       assert.equal(url.searchParams.get('gain'), '0.4');
       return { jukeboxStatus: { playing: true, gain: 0.4 } };
     },
   });
+  resetJukeboxState();
   try {
     const volumeFeature = jukebox
       .buildDevice(fake, jukeboxConfig)
@@ -517,9 +552,10 @@ test('jukebox volume maps 0-100 to the 0.0-1.0 gain and publishes the feedback',
   } finally {
     mock.restore();
   }
-  assert.deepEqual(fake.published, [
+  assert.deepEqual(
+    fake.published.find((p) => p.featureExternalId.endsWith(':volume')),
     { featureExternalId: 'ext:test-integration:jukebox:music-example-com:volume', state: 40 },
-  ]);
+  );
 });
 
 test('jukebox next skips to the following index of the queue', async () => {
@@ -536,6 +572,7 @@ test('jukebox next skips to the following index of the queue', async () => {
       return { jukeboxStatus: { currentIndex: 2, playing: true } };
     },
   });
+  resetJukeboxState();
   try {
     const nextFeature = jukebox
       .buildDevice(fake, jukeboxConfig)
@@ -554,23 +591,22 @@ test('jukebox next skips to the following index of the queue', async () => {
   assert.equal(actions[1].index, '2');
 });
 
-test('jukebox onPoll publishes the playback state and the volume', async () => {
+test('jukebox onPoll publishes the playback state and the volume at their 1.x ids', async () => {
   const fake = createFakeGladys();
   const mock = mockSubsonicFetch({
-    jukeboxControl: { jukeboxStatus: { currentIndex: 0, playing: true, gain: 0.9 } },
+    jukeboxControl: {
+      jukeboxPlaylist: { currentIndex: 0, playing: true, gain: 0.9, entry: [{ id: 's1' }] },
+    },
   });
+  resetJukeboxState();
   try {
     await jukebox.onPoll(fake, jukeboxConfig);
   } finally {
     mock.restore();
   }
-  assert.deepEqual(fake.published, [
-    {
-      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
-      state: 1,
-    },
-    { featureExternalId: 'ext:test-integration:jukebox:music-example-com:volume', state: 90 },
-  ]);
+  const byId = Object.fromEntries(fake.published.map((p) => [p.featureExternalId, p]));
+  assert.equal(byId['ext:test-integration:jukebox:music-example-com:playback-state'].state, 1);
+  assert.equal(byId['ext:test-integration:jukebox:music-example-com:volume'].state, 90);
 });
 
 test('jukebox_play_playlist queues the matched playlist and starts playback', async () => {
@@ -750,44 +786,64 @@ function jukeboxServer({ playing = true, songs = 3 } = {}) {
   return { actions, state, restore: mock.restore };
 }
 
+/** A fake Gladys where the jukebox device was added by the user. */
+async function gladysWithJukebox() {
+  const fake = createFakeGladys({
+    devices: [{ external_id: 'ext:test-integration:jukebox:music-example-com', features: [] }],
+  });
+  await fake.connect();
+  resetJukeboxState();
+  return fake;
+}
+
+const PLAYBACK_ID = 'ext:test-integration:jukebox:music-example-com:playback-state';
+const playbackStates = (fake) =>
+  fake.published.filter((p) => p.featureExternalId === PLAYBACK_ID).map((p) => p.state);
+
 test('jukebox widget toggle reads the state at tap time and publishes the new one', async () => {
-  const fake = createFakeGladys();
+  const fake = await gladysWithJukebox();
   const srv = jukeboxServer({ playing: true });
   try {
     await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
     assert.deepEqual(
       srv.actions.map((a) => a.action),
-      ['status', 'stop'],
+      ['status', 'stop', 'get'],
     );
     await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
-    assert.deepEqual(srv.actions.map((a) => a.action).slice(2), ['status', 'start']);
+    assert.deepEqual(srv.actions.map((a) => a.action).slice(3), ['status', 'start', 'get']);
   } finally {
     srv.restore();
   }
-  assert.deepEqual(fake.published, [
-    {
-      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
-      state: 0,
-    },
-    {
-      featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
-      state: 1,
-    },
-  ]);
+  assert.deepEqual(playbackStates(fake), [0, 1]);
+});
+
+test('a jukebox never added to Gladys is not published after a button', async () => {
+  const fake = createFakeGladys();
+  const srv = jukeboxServer({ playing: true });
+  try {
+    await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
+  } finally {
+    srv.restore();
+  }
+  assert.deepEqual(
+    srv.actions.map((a) => a.action),
+    ['status', 'stop'],
+  );
+  assert.deepEqual(fake.published, []);
 });
 
 test('jukebox widget previous/next skip in the queue, refused past its ends', async () => {
-  const fake = createFakeGladys();
+  const fake = await gladysWithJukebox();
   const srv = jukeboxServer();
   try {
     await jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig });
-    assert.deepEqual(srv.actions.at(-1), { action: 'skip', index: '2' });
+    assert.deepEqual(srv.actions.at(-2), { action: 'skip', index: '2' });
     await assert.rejects(
       () => jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig }),
       /No track at position 3/,
     );
     await jukebox.widgetAction(fake, { actionKey: 'previous', config: jukeboxConfig });
-    assert.deepEqual(srv.actions.at(-1), { action: 'skip', index: '1' });
+    assert.deepEqual(srv.actions.at(-2), { action: 'skip', index: '1' });
     // The device features share the same helper.
     srv.state.currentIndex = 0;
     await assert.rejects(() => skipQueue(jukeboxConfig, -1), /No track at position -1/);
@@ -796,14 +852,11 @@ test('jukebox widget previous/next skip in the queue, refused past its ends', as
   }
   // A skip starts playing: the state Gladys shows follows — sent once, the
   // second skip leaves it unchanged (deduplicated like the poll).
-  assert.deepEqual(
-    fake.published.map((p) => p.state),
-    [1],
-  );
+  assert.deepEqual(playbackStates(fake), [1]);
 });
 
 test('jukebox widget shuffle queues random songs, like the configuration action', async () => {
-  const fake = createFakeGladys();
+  const fake = await gladysWithJukebox();
   const srv = jukeboxServer({ playing: false });
   try {
     const message = await jukebox.widgetAction(fake, {
@@ -813,7 +866,7 @@ test('jukebox widget shuffle queues random songs, like the configuration action'
     assert.equal(message.fr, 'Lecture de 2 morceaux aléatoires sur le jukebox.');
     assert.deepEqual(
       srv.actions.map((a) => a.action),
-      ['clear', 'add', 'start'],
+      ['clear', 'add', 'start', 'get'],
     );
     assert.deepEqual(srv.actions[1], { action: 'add', id: 'r2' }, 'the add call carries the ids');
     assert.deepEqual(
@@ -823,10 +876,7 @@ test('jukebox widget shuffle queues random songs, like the configuration action'
   } finally {
     srv.restore();
   }
-  assert.deepEqual(fake.published[0], {
-    featureExternalId: 'ext:test-integration:jukebox:music-example-com:playback-state',
-    state: 1,
-  });
+  assert.deepEqual(playbackStates(fake), [1]);
 
   // An empty library leaves the queue alone and says so.
   const empty = mockSubsonicFetch({ getRandomSongs: {} });
@@ -844,18 +894,19 @@ test('jukebox widget shuffle queues random songs, like the configuration action'
 });
 
 test('a refused state publication never fails a jukebox button that acted', async () => {
-  // The jukebox device was never added to Gladys: the core refuses the
-  // state (the SDK throws), but the jukebox DID start playing.
-  const fake = createFakeGladys();
+  // The core refuses the states (the SDK throws), but the jukebox DID start
+  // playing.
+  const fake = await gladysWithJukebox();
   fake.publishState = async () => {
     throw new Error('HTTP 404: device feature not found');
   };
+  fake.publishStates = fake.publishState;
   const srv = jukeboxServer({ playing: false });
   try {
     await jukebox.widgetAction(fake, { actionKey: 'toggle', config: jukeboxConfig });
     assert.deepEqual(
       srv.actions.map((a) => a.action),
-      ['status', 'start'],
+      ['status', 'start', 'get'],
     );
     await jukebox.widgetAction(fake, { actionKey: 'next', config: jukeboxConfig });
     const message = await jukebox.widgetAction(fake, {

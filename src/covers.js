@@ -97,15 +97,17 @@ export function splitDataImage(image) {
 }
 
 /**
- * The raw base64 of a cover for a widget, small enough for the core.
+ * The raw base64 of a cover for a widget or the music player, small enough
+ * for the core (the same bounds for both).
  * @param {object} config normalized config
  * @param {string} coverArtId
+ * @param {number[]} [sizes] sizes asked in turn, the first that fits wins
  * @returns {Promise<string>} raw base64, no `data:` prefix
  * @throws when the server has no usable image for this id
  */
-export async function widgetCoverArt(config, coverArtId) {
+export async function widgetCoverArt(config, coverArtId, sizes = FALLBACK_SIZES) {
   let reason = '';
-  for (const size of FALLBACK_SIZES) {
+  for (const size of sizes) {
     const { mime, base64 } = splitDataImage(await getCoverArt(config, coverArtId, size));
     const type = mime.toLowerCase().trim();
     if (!WIDGET_IMAGE_MIMES.has(type)) {

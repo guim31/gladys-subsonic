@@ -1,7 +1,7 @@
 # Subsonic integration
 
-This integration links Gladys Assistant with any music server implementing
-the [Subsonic API](https://www.subsonic.org/pages/api.jsp):
+This integration (Gladys 5.3 or later) links Gladys Assistant with any music
+server implementing the [Subsonic API](https://www.subsonic.org/pages/api.jsp):
 [Navidrome](https://www.navidrome.org), Airsonic-Advanced, Gonic, LMS,
 Subsonic… It was designed and tested first against **Navidrome**.
 
@@ -21,7 +21,8 @@ Subsonic… It was designed and tested first against **Navidrome**.
     placeholder takes its place;
   - **Songs**, **Artists** and **Albums** counted in the library.
 - An optional **Subsonic jukebox** device to control _server-side_ playback:
-  play/pause, previous/next, volume and playback state.
+  with Gladys 5.3 it is a real player in the **Music** widget (artwork, track,
+  progress, queue, library search) — see "Gladys 5.3 music player".
 - Buttons in the Configuration screen: test the connection, start a library
   scan, play random songs or a playlist on the jukebox.
 - Three dashboard widgets (Gladys 5.1 or later): **Now playing**, **Jukebox**
@@ -69,6 +70,54 @@ From your scenes or the dashboard you can then: play/pause, skip to the next
 or previous track, set the volume, and trigger the **Play random songs**
 (N random tracks) or **Play a playlist** (by exact name, case-insensitive)
 buttons.
+
+## Gladys 5.3 music player
+
+With Gladys 5.3 or later, the jukebox is a player of the dashboard **Music**
+widget (pick the "Subsonic jukebox" device):
+
+- **Now playing**: artwork, title, artist, album, a progress bar (drag or
+  click it to move in the song), play/pause, previous/next and volume. Gladys
+  reads the jukebox again right after each song ends: the next one shows
+  within seconds, even with a 60 s polling interval. A change made elsewhere
+  (another app driving the jukebox) shows at the next poll.
+- **Library**: the search button opens a panel with the **Albums**,
+  **Artists** and **Playlists** folders, and a search (artists, albums,
+  playlists, songs). Tapping an item plays it; an album, an artist or a
+  playlist can also be queued **next** or **at the end**. An artist or a
+  playlist plays 500 songs at most. The language of these folders and of the
+  panel's messages is set in the configuration (**Language of the music
+  panel**, French by default).
+- **Queue**: the songs of the jukebox, the current one highlighted; tap one to
+  play it.
+- **Scenes**: the **Play music on a speaker** action plays an album, an artist, a
+  playlist or a song picked from the library. The playback state can be set
+  from a scene too: 0 pause, 1 play, 2 stop.
+
+The Subsonic API has no shuffle mode (only a one-time shuffle of the queue,
+kept on the **Shuffle** button of the Jukebox widget), no repeat and no mute:
+those buttons do not show in the player.
+
+**Playback state.** It is 1 while playing, 0 when paused and 2 when stopped:
+empty queue, end of the queue, or a stop asked by Gladys (the jukebox pauses
+and goes back to the start of the song). Before 1.3.0 a stop read 0: a scene
+waiting for "= 0" no longer fires at the end of the queue.
+
+**Jukebox already added.** After updating the integration, open its
+**Discover** tab and click **Update** on the jukebox: it gets the new features
+(title, artist, album, artwork, duration, position) and its playback state
+becomes writable. The ids do not change: scenes and dashboards keep working.
+Until then, the Music widget keeps its simple layout (buttons and volume).
+
+**Only the jukebox plays.** What your apps play (DSub, Symfonium, the web
+interface…) stays visible through the **Now playing** sensor and widget,
+read only: the Subsonic API cannot drive those players.
+
+**Queuing "next".** The API cannot insert: the integration removes the songs
+that follow, adds the new ones, then puts the others back, without cutting the
+current song. When more than 50 songs follow, or the current song is also
+higher in the queue, it rebuilds the queue and resumes at the same second: the
+sound then stops for an instant.
 
 ## Dashboard widgets
 
@@ -128,8 +177,10 @@ an image.
 - **"The server refuses a scan from this account"**: starting a scan is
   reserved to administrators (Navidrome does so). It does not matter: the
   button is only a shortcut, the server scans on its own schedule and the
-  sensors follow. Make the account an administrator if you want the button —
-  nothing else in the integration needs those rights.
+  sensors follow. Make the account an administrator if you want the button.
+- **"Jukebox is admin only" (error 50)**: Navidrome reserves the jukebox to
+  administrators (`Jukebox.AdminOnly`, true by default). Use an administrator
+  account, or set `ND_JUKEBOX_ADMINONLY=false` on the server.
 - **A track stays on screen although playback stopped**: the server keeps the
   session in its "now playing" list for a while after the music stops. The
   integration only counts sessions whose reported state is really playing, but

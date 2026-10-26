@@ -21,7 +21,11 @@ export const DEFAULT_CONFIG = {
   auth_method: 'token', // 'token' (md5 + salt) | 'legacy' (hex-encoded password)
   poll_frequency: 60, // seconds, how often the server is polled
   jukebox_enabled: false, // create the jukebox device (server-side playback)
+  language: 'fr', // music panel folders and errors (the core does not tell)
 };
+
+/** Languages of the `language` field. */
+export const LANGUAGES = ['fr', 'en', 'de', 'es'];
 
 /**
  * Merge the user config with the defaults.
@@ -42,6 +46,7 @@ export function normalizeConfig(raw = {}) {
     // Force the types: config may arrive as strings from a form.
     poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
     jukebox_enabled: raw.jukebox_enabled === true || raw.jukebox_enabled === 'true',
+    language: LANGUAGES.includes(raw.language) ? raw.language : DEFAULT_CONFIG.language,
   };
 }
 
