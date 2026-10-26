@@ -90,6 +90,10 @@ function navidromeJukebox({
           state.playing = false;
         // falls through
         case 'add':
+          if (state.failNextAdd) {
+            state.failNextAdd = false;
+            return { status: 'failed', error: { code: 0, message: 'timeout' } };
+          }
           for (const songId of ids) {
             if (!library.has(songId)) {
               return { status: 'failed', error: { code: 70, message: 'not found' } };
@@ -100,9 +104,18 @@ function navidromeJukebox({
             state.index = 0;
           }
           break;
-        case 'remove':
-          state.queue.splice(Number(url.searchParams.get('index')), 1);
+        case 'remove': {
+          // Navidrome: pauses the song it removes, then finds the current
+          // song again BY ID (its first occurrence), or -1.
+          const at = Number(url.searchParams.get('index'));
+          const currentId = state.queue[state.index]?.id;
+          if (state.playing && at === state.index) {
+            state.playing = false;
+          }
+          state.queue.splice(at, 1);
+          state.index = state.queue.findIndex((song) => song.id === currentId);
           break;
+        }
         case 'setGain':
           state.gain = Number(url.searchParams.get('gain'));
           break;
@@ -246,6 +259,12 @@ test('the end of the queue is IDLE, a pause on the last song is not', async () =
     await jukebox.onPoll(fake, config);
     assert.equal(lastState(fake, 'playback-state'), MUSIC_PLAYBACK_STATE.IDLE);
     assert.equal(lastText(fake, 'title'), 'Dew', 'the last song stays shown');
+    // A pause asked while stopped at the end: confirmed as a pause.
+    const pause = jukebox
+      .buildDevice(fake, config)
+      .features.find((f) => f.type === 'playback_state');
+    await jukebox.onSetValue(fake, { device: {}, feature: pause, value: 0, config });
+    assert.equal(lastState(fake, 'playback-state'), MUSIC_PLAYBACK_STATE.PAUSED);
     // A pause from Gladys in the first second of the last song.
     jb.state.playing = true;
     await jukebox.onPoll(fake, config);
@@ -624,6 +643,15 @@ test('play next rebuilds the queue when the current song is queued twice', async
       jb.state.queue.map((s) => s.id),
       ['s1', 's2', 's1', 's2', 's3'],
     );
+    assert.ok(
+      jb.actions.some((a) => a.action === 'set'),
+      'rebuilt with set',
+    );
+    assert.equal(
+      jb.actions.some((a) => a.action === 'remove'),
+      false,
+      'no removal: Navidrome would move the index to the first First Light',
+    );
     assert.equal(jb.state.index, 2, 'back on the same song');
     assert.equal(jb.state.position, 12, 'at the same second');
     assert.equal(jb.state.playing, true);
@@ -631,6 +659,58 @@ test('play next rebuilds the queue when the current song is queued twice', async
     jb.restore();
   }
   assert.ok(MAX_TAIL_REMOVALS >= 10);
+});
+
+test('play next rebuilds the queue when the current song is about to end', async () => {
+  const fake = await connectedGladys();
+  const { catalog } = catalogFor(fake);
+  const jb = navidromeJukebox({ index: 0 });
+  jb.state.position = 35; // First Light: 40 s
+  try {
+    await catalog.play(jukeboxDevice, { id: 'track:s3', type: 'track' }, 'next');
+    assert.ok(jb.actions.some((a) => a.action === 'set'));
+    assert.deepEqual(
+      jb.state.queue.map((s) => s.id),
+      ['s1', 's3', 's2', 's3'],
+    );
+    assert.equal(jb.state.position, 35);
+    assert.equal(jb.state.playing, true);
+  } finally {
+    jb.restore();
+  }
+});
+
+test('play next puts the removed songs back when the add fails', async () => {
+  const fake = await connectedGladys();
+  const { catalog } = catalogFor(fake);
+  const jb = navidromeJukebox({ index: 0 });
+  jb.state.failNextAdd = true; // a transient failure, after the removals
+  try {
+    await assert.rejects(() =>
+      catalog.play(jukeboxDevice, { id: 'track:s3', type: 'track' }, 'next'),
+    );
+  } finally {
+    jb.restore();
+  }
+  assert.deepEqual(
+    jb.state.queue.map((s) => s.id),
+    ['s1', 's2', 's3'],
+    'the queue as it was',
+  );
+  assert.equal(jb.state.playing, true);
+});
+
+test('a jukebox reserved to administrators says so in the panel', async () => {
+  const fake = await connectedGladys();
+  const { catalog } = catalogFor(fake);
+  const m = mockSubsonicFetch({
+    jukeboxControl: { status: 'failed', error: { code: 50, message: 'Jukebox is admin only' } },
+  });
+  try {
+    await assert.rejects(() => catalog.queueGet(jukeboxDevice, {}), /administrateurs/);
+  } finally {
+    m.restore();
+  }
 });
 
 test('play next on an empty queue appends', async () => {
@@ -698,7 +778,7 @@ test('artworks are asked at their size from the server, with the credentials', a
   });
   try {
     assert.equal(await catalog.artwork(key), Buffer.from([0xff, 0xd8, 0xff]).toString('base64'));
-    assert.deepEqual(sizes, ['300', '200'], 'smaller when the first answer is too large');
+    assert.deepEqual(sizes, ['300', '160'], 'smaller when the first answer is too large');
     await assert.rejects(() => catalog.artwork('art-000000000000'), /Unknown artwork/);
     // Another server, other keys.
     const other = fake.artworkKey(artworkSource('other-host', 'al-1_abc', 300));

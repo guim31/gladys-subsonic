@@ -61,11 +61,20 @@ export const ADD_CHUNK = 100;
 /** Songs after the current one that "play next" removes one by one at most. */
 export const MAX_TAIL_REMOVALS = 50;
 
+/** Seconds left in the current song under which "play next" rebuilds the
+ * queue rather than removing its tail: the song could end meanwhile, and
+ * Navidrome would then pause the song a removal hits. */
+export const TAIL_REMOVAL_MARGIN_S = 15;
+
+/** Albums of an artist read at once, and for how long at most. */
+const ALBUM_READS_AT_ONCE = 4;
+const ARTIST_READ_BUDGET_MS = 4000;
+
 /** Artwork sizes asked from the server (px): the player frame, a list row. */
 export const ARTWORK_SIZE = { player: 300, list: 128 };
 
 /** Smaller sizes tried when an artwork stays too large for the core. */
-const ARTWORK_FALLBACK = { 300: [300, 200, 128], 128: [128, 64] };
+const ARTWORK_FALLBACK = { 300: [300, 160], 128: [128, 64] };
 
 // Lists the server only gives whole (artists, playlists): kept a minute, so
 // scrolling a long list does not read it again for every page.
@@ -229,38 +238,38 @@ export function createCatalog({
       const playlist = await readById(() => getPlaylist(config, media.itemId));
       return playlist.entry.slice(0, MAX_PLAY_TRACKS);
     }
-    // An artist: its albums, as the server lists them, until the bound.
+    // An artist: its albums, as the server lists them, until the bound —
+    // read ALBUM_READS_AT_ONCE at a time, and no longer than
+    // ARTIST_READ_BUDGET_MS (the core gives a play command 10 s in all).
+    const started = now();
     const artist = await readById(() => getArtist(config, media.itemId));
+    const albums = artist.album.filter((album) => album?.id);
     const songs = [];
-    for (const album of artist.album) {
-      if (songs.length >= MAX_PLAY_TRACKS || !album?.id) {
-        continue;
+    for (let at = 0; at < albums.length; at += ALBUM_READS_AT_ONCE) {
+      if (
+        songs.length >= MAX_PLAY_TRACKS ||
+        (songs.length > 0 && now() - started > ARTIST_READ_BUDGET_MS)
+      ) {
+        break;
       }
-      const full = await getAlbum(config, album.id);
-      songs.push(...full.song.slice(0, MAX_PLAY_TRACKS - songs.length));
+      const batch = albums.slice(at, at + ALBUM_READS_AT_ONCE);
+      const read = await Promise.all(batch.map((album) => getAlbum(config, album.id)));
+      for (const full of read) {
+        songs.push(...full.song.slice(0, MAX_PLAY_TRACKS - songs.length));
+      }
     }
     return songs;
-  }
-
-  /** Append songs to the jukebox queue, ADD_CHUNK ids per request. */
-  async function addSongs(config, ids) {
-    for (let at = 0; at < ids.length; at += ADD_CHUNK) {
-      await jukeboxControl(config, 'add', { id: ids.slice(at, at + ADD_CHUNK) });
-    }
-  }
-
-  /** Replace the queue with these songs, in chunks, the first ones by `set`. */
-  async function setSongs(config, ids) {
-    await jukeboxControl(config, 'set', { id: ids.slice(0, ADD_CHUNK) });
-    await addSongs(config, ids.slice(ADD_CHUNK));
   }
 
   /** "Play next": the songs right after the current one. */
   async function insertNext(config, ids) {
     const queue = await jukeboxControl(config, 'get');
-    const entries = asArray(queue.entry);
+    const entries = asArray(queue.entry).filter(
+      (entry) => entry?.id !== undefined && entry.id !== null,
+    );
     const index = Number(queue.currentIndex);
-    if (!(index >= 0 && index < entries.length)) {
+    if (entries.length !== asArray(queue.entry).length || !(index >= 0 && index < entries.length)) {
+      // Nothing current (or a row we could not put back): at the end.
       await addSongs(config, ids);
       return;
     }
@@ -269,26 +278,73 @@ export function createCatalog({
       await addSongs(config, ids);
       return;
     }
-    const currentId = String(entries[index].id);
+    const current = entries[index];
+    const currentId = String(current.id);
     const duplicated = entries.slice(0, index).some((entry) => String(entry.id) === currentId);
-    if (!duplicated && tail.length <= MAX_TAIL_REMOVALS) {
+    const left = Number(current.duration) - Number(queue.position);
+    const endingSoon = queue.playing && Number.isFinite(left) && left < TAIL_REMOVAL_MARGIN_S;
+    if (!duplicated && !endingSoon && tail.length <= MAX_TAIL_REMOVALS) {
       // Seamless: the current song plays on.
       for (let at = entries.length - 1; at > index; at -= 1) {
         await jukeboxControl(config, 'remove', { index: at });
       }
-      await addSongs(config, [...ids, ...tail]);
+      try {
+        await addSongs(config, [...ids, ...tail]);
+      } catch (err) {
+        // Put the removed songs back rather than lose them.
+        await addSongs(config, tail).catch(() => {});
+        throw err;
+      }
       return;
     }
     // Rebuilt: `set` stops the sound, then back to the same song and second.
     const head = entries.slice(0, index + 1).map((entry) => String(entry.id));
-    await setSongs(config, [...head, ...ids, ...tail]);
-    await jukeboxControl(config, 'skip', { index, offset: Number(queue.position) || 0 });
-    if (queue.playing) {
-      await jukeboxControl(config, 'start');
+    const resume = async (list) => {
+      await setSongs(config, list);
+      await jukeboxControl(config, 'skip', { index, offset: Number(queue.position) || 0 });
+      if (queue.playing) {
+        await jukeboxControl(config, 'start');
+      }
+    };
+    try {
+      await resume([...head, ...ids, ...tail]);
+    } catch (err) {
+      // The queue as it was, and the song where it was.
+      await resume([...head, ...tail]).catch(() => {});
+      throw err;
     }
   }
 
-  return {
+  /** A refusal of the server the user can act on, in the panel's language. */
+  function explain(err) {
+    if (err instanceof SubsonicError && err.code === 50) {
+      return fail('jukeboxAdminOnly');
+    }
+    if (err instanceof SubsonicError && /jukebox is disabled/i.test(err.message)) {
+      return fail('jukeboxOffOnServer');
+    }
+    return err;
+  }
+
+  /** Run a catalog operation, its server refusals explained. */
+  const explained =
+    (operation) =>
+    async (...args) => {
+      try {
+        return await operation(...args);
+      } catch (err) {
+        throw explain(err);
+      }
+    };
+
+  /** Publish the new state without holding the command's answer. */
+  const republish = () => {
+    Promise.resolve()
+      .then(() => afterCommand())
+      .catch(() => {});
+  };
+
+  const api = {
     toMediaItem,
 
     /**
@@ -438,7 +494,7 @@ export function createCatalog({
       } else {
         throw fail('badMode');
       }
-      await afterCommand();
+      republish();
     },
 
     /**
@@ -474,7 +530,7 @@ export function createCatalog({
       }
       await jukeboxControl(config, 'skip', { index, offset: 0 });
       await jukeboxControl(config, 'start');
-      await afterCommand();
+      republish();
     },
 
     /**
@@ -493,4 +549,26 @@ export function createCatalog({
       return widgetCoverArt(getConfig(), source.coverArtId, sizes);
     },
   };
+  for (const name of ['browse', 'search', 'play', 'queueGet', 'queuePlay']) {
+    api[name] = explained(api[name]);
+  }
+  return api;
+}
+
+/**
+ * Append songs to the jukebox queue, ADD_CHUNK ids per request (a long
+ * query string is refused by some reverse proxies).
+ * @param {object} config
+ * @param {string[]} ids
+ */
+export async function addSongs(config, ids) {
+  for (let at = 0; at < ids.length; at += ADD_CHUNK) {
+    await jukeboxControl(config, 'add', { id: ids.slice(at, at + ADD_CHUNK) });
+  }
+}
+
+/** Replace the queue with these songs, the first ones by `set`, in chunks. */
+async function setSongs(config, ids) {
+  await jukeboxControl(config, 'set', { id: ids.slice(0, ADD_CHUNK) });
+  await addSongs(config, ids.slice(ADD_CHUNK));
 }

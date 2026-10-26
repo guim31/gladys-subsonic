@@ -75,6 +75,18 @@ export const TEXT = {
     de: 'Auf der Jukebox ist nichts geladen.',
     es: 'No hay nada cargado en la jukebox.',
   },
+  jukeboxAdminOnly: {
+    en: 'The server reserves the jukebox to administrators: use an administrator account (Navidrome: Jukebox.AdminOnly).',
+    fr: 'Le serveur réserve le jukebox aux administrateurs : utilisez un compte administrateur (Navidrome : Jukebox.AdminOnly).',
+    de: 'Der Server erlaubt die Jukebox nur Administratoren: Verwende ein Administratorkonto (Navidrome: Jukebox.AdminOnly).',
+    es: 'El servidor reserva la jukebox a los administradores: use una cuenta de administrador (Navidrome: Jukebox.AdminOnly).',
+  },
+  jukeboxOffOnServer: {
+    en: 'The jukebox is disabled on the server (Navidrome: Jukebox.Enabled).',
+    fr: 'Le jukebox est désactivé sur le serveur (Navidrome : Jukebox.Enabled).',
+    de: 'Die Jukebox ist auf dem Server deaktiviert (Navidrome: Jukebox.Enabled).',
+    es: 'La jukebox está desactivada en el servidor (Navidrome: Jukebox.Enabled).',
+  },
   badPlaybackState: {
     en: 'The jukebox can play, pause or stop, nothing else.',
     fr: 'Le jukebox sait lire, mettre en pause ou arrêter, rien d’autre.',

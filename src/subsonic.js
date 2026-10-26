@@ -291,6 +291,9 @@ export async function getRandomSongs(config, size = 20) {
   return asArray(envelope.randomSongs?.song);
 }
 
+/** Largest cover read from the server (bytes). */
+export const MAX_COVER_BYTES = 10 * 1024 * 1024;
+
 /**
  * Fetch a cover art and return it in the format the Gladys camera channel
  * expects: `<mime>;base64,...`, which the dashboard renders as `data:<that>`.
@@ -326,6 +329,12 @@ export async function getCoverArt(config, id, size) {
     throw new SubsonicError(envelope.error?.code ?? 0, envelope.error?.message);
   }
 
+  // A server that ignores `size` could send the original file: never load
+  // a huge one in the 256 MB sandbox.
+  const length = Number(response.headers.get('content-length'));
+  if (length > MAX_COVER_BYTES) {
+    throw new Error(`getCoverArt answered ${length} bytes, more than ${MAX_COVER_BYTES}`);
+  }
   const mime = contentType.split(';')[0].trim();
   if (!mime.startsWith('image/')) {
     // Anything else (an HTML error page from a reverse proxy, an empty

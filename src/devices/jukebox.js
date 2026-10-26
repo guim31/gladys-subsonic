@@ -37,7 +37,7 @@ import { jukeboxControl, getRandomSongs, getPlaylists, getPlaylist, asArray } fr
 import { isConfigured, pollFrequencyMs } from '../config.js';
 import { serverPlatformId } from './server.js';
 import { JUKEBOX_ACTION, RANDOM_SONG_COUNT } from '../widgets.js';
-import { artworkSource, ARTWORK_SIZE } from '../catalog.js';
+import { artworkSource, ARTWORK_SIZE, addSongs } from '../catalog.js';
 import { TEXT, MESSAGES, thrown } from '../i18n.js';
 
 const DEVICE_TYPE = 'jukebox';
@@ -64,8 +64,9 @@ const FEATURE = JUKEBOX_FEATURE;
 /** Bound of the duration and position features, in seconds. */
 export const MAX_SECONDS = 86_400;
 
-/** The queue is read again at least this often while the index stays. */
-export const QUEUE_REFRESH_MS = 60 * 1000;
+/** The queue is read again at least this often while the index stays (a
+ * change by another client; ours read it at once). */
+export const QUEUE_REFRESH_MS = 5 * 60 * 1000;
 
 /** Margin after the expected end of a song before reading the jukebox. */
 const TRACK_END_MARGIN_MS = 1500;
@@ -83,6 +84,8 @@ let lastRead = null;
 let trackEndTimer = null;
 // How to read the jukebox again (set by index.js: a poll of the device).
 let followUp = null;
+// The publication in progress (they run one after the other).
+let publishing = Promise.resolve();
 
 /** Wire the read run after the expected end of a song. */
 export function setJukeboxFollowUp(callback) {
@@ -124,7 +127,15 @@ const seconds = (value) => {
  * @param {{ status?: object, fresh?: boolean }} [options] `status`: the
  *   jukeboxStatus a command answered; `fresh`: read the queue again
  */
-export async function publishJukebox(gladys, config, { status, fresh = false } = {}) {
+export function publishJukebox(gladys, config, options = {}) {
+  // One at a time: a poll, a command and the read after a song share the
+  // queue and the stop memory, and the last read must be the last published.
+  const run = publishing.then(() => readAndPublish(gladys, config, options));
+  publishing = run.catch(() => {});
+  return run;
+}
+
+async function readAndPublish(gladys, config, { status, fresh = false }) {
   const platform = serverPlatformId(config);
   let current = status ?? (await jukeboxControl(config, 'status'));
   let index = Number(current.currentIndex);
@@ -265,6 +276,8 @@ async function setPlaybackState(config, value) {
     return jukeboxControl(config, 'start');
   }
   if (value === MUSIC_PLAYBACK_STATE.PAUSED) {
+    // Stopped or at the end of the queue: now paused, as asked.
+    stoppedAt = null;
     return jukeboxControl(config, 'stop');
   }
   if (value === MUSIC_PLAYBACK_STATE.IDLE) {
@@ -447,7 +460,10 @@ export const jukebox = {
         return MESSAGES.playlistEmpty(match.name);
       }
       await jukeboxControl(config, 'clear');
-      await jukeboxControl(config, 'add', { id: playlist.entry.map((song) => song.id) });
+      await addSongs(
+        config,
+        playlist.entry.map((song) => String(song.id)),
+      );
       const status = await jukeboxControl(config, 'start');
       await publishAfterCommand(gladys, config, status);
       return MESSAGES.playingPlaylist(match.name, playlist.entry.length);
@@ -534,7 +550,10 @@ export async function playRandom(config, count) {
     return { queued: 0, status: null };
   }
   await jukeboxControl(config, 'clear');
-  await jukeboxControl(config, 'add', { id: songs.map((song) => song.id) });
+  await addSongs(
+    config,
+    songs.map((song) => String(song.id)),
+  );
   const status = await jukeboxControl(config, 'start');
   return { queued: songs.length, status };
 }

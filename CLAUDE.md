@@ -79,19 +79,26 @@ conteneur verrouillé, à travers le faux Gladys du SDK (54 contrôles).
   dernier morceau, hors relecture qui suit une commande), ou arrêt demandé
   par Gladys (pause + retour à 0, retenu tant que le jukebox ne bouge pas).
 - **Relevés** : `status` à chaque relevé, `get` (toute la file) seulement si
-  l'index change, après une commande, ou chaque minute ; une relecture
+  l'index change, après une commande, ou toutes les 5 min ; une relecture
   `poller.refresh('jukebox')` est programmée à la fin prévue du morceau quand
   elle tombe avant le prochain relevé. Un relevé forcé (connexion, config,
   appareil créé ou mis à jour) oublie l'instantané `publishNowPlaying`
-  (`forgetPublished(gladys, config)`).
-- **Catalogue** (`src/catalog.js`) : ids `track:`/`album:`/`artist:`/`playlist:`
-  - id Subsonic, racines `gladys:` ; albums paginés par le serveur
-    (`getAlbumList2`, total = lus + 1 tant que la page est pleine), artistes et
-    playlists lus en entier (cache 1 min) ; morceaux lus **avant** `clear` (un id
-    disparu ne vide pas la file) ; `add` par paquets de 100 ids ; 500 morceaux au
-    plus ; « à la suite » : retrait de la queue puis réajout (≤ 50 morceaux,
-    sans doublon du morceau courant avant lui), sinon `set` + `skip` à la même
-    seconde + `start`. Langue des dossiers et des erreurs : champ `language`.
+  (`forgetPublished(gladys, config)`). Les publications passent une à une
+  (relevé, commande et relecture partagent la file en cache et la mémoire
+  d'arrêt).
+- **Catalogue** (`src/catalog.js`) : ids `track:`, `album:`, `artist:`,
+  `playlist:` suivis de l'id Subsonic, racines `gladys:` ; albums paginés par
+  le serveur (`getAlbumList2`, total = lus + 1 tant que la page est pleine),
+  artistes et playlists lus en entier (cache 1 min) ; morceaux lus **avant**
+  `clear` (un id disparu ne vide pas la file) ; `add` par paquets de 100 ids ;
+  500 morceaux au plus ; un artiste : albums lus 4 à la fois, 4 s au plus (le
+  cœur donne 10 s à toute la commande). « À la suite » : retrait de la queue
+  puis réajout (≤ 50 morceaux, pas de doublon du morceau courant avant lui,
+  plus de 15 s avant sa fin, sinon un retrait tomberait sur le morceau suivant
+  devenu courant), sinon `set` + `skip` à la même seconde + `start` ; en cas
+  d'échec, la file d'avant est remise. Republication après une commande sans
+  retarder l'accusé. Erreur 50 et « Jukebox is disabled » traduites dans le
+  panneau. Langue des dossiers et des erreurs : champ `language`.
 - **Pochettes** : clé SDK `artworkKey` d'une pseudo-URL
   `subsonic-cover://<serveur>/<taille>/<coverArt>` (jamais lue telle quelle) ;
   `onMusicGetArtwork` la relit avec les identifiants via `widgetCoverArt`
