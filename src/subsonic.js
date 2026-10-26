@@ -233,11 +233,66 @@ export async function getPlaylist(config, id) {
   return { ...playlist, entry: asArray(playlist.entry) };
 }
 
+/**
+ * A page of albums (ID3 tags), e.g. alphabetically: `type` is one of the
+ * getAlbumList2 list types, `size` at most 500 (the API bound).
+ * @param {object} config
+ * @param {{ type?: string, size?: number, offset?: number }} [options]
+ * @returns {Promise<Array<object>>}
+ */
+export async function getAlbumList2(
+  config,
+  { type = 'alphabeticalByName', size = 50, offset = 0 } = {},
+) {
+  const envelope = await request(config, 'getAlbumList2', { type, size, offset });
+  return asArray(envelope.albumList2?.album);
+}
+
+/** One album with its songs: `{ ...album, song: [...] }`. */
+export async function getAlbum(config, id) {
+  const envelope = await request(config, 'getAlbum', { id });
+  const album = envelope.album ?? {};
+  return { ...album, song: asArray(album.song) };
+}
+
+/** One artist with its albums: `{ ...artist, album: [...] }`. */
+export async function getArtist(config, id) {
+  const envelope = await request(config, 'getArtist', { id });
+  const artist = envelope.artist ?? {};
+  return { ...artist, album: asArray(artist.album) };
+}
+
+/** One song. */
+export async function getSong(config, id) {
+  const envelope = await request(config, 'getSong', { id });
+  return envelope.song ?? {};
+}
+
+/**
+ * Search artists, albums and songs by name (ID3 tags).
+ * @param {object} config
+ * @param {string} query
+ * @param {{ artistCount?: number, albumCount?: number, songCount?: number }} counts
+ * @returns {Promise<{ artist: Array<object>, album: Array<object>, song: Array<object> }>}
+ */
+export async function search3(config, query, { artistCount = 0, albumCount = 0, songCount = 0 }) {
+  const envelope = await request(config, 'search3', { query, artistCount, albumCount, songCount });
+  const result = envelope.searchResult3 ?? {};
+  return {
+    artist: asArray(result.artist),
+    album: asArray(result.album),
+    song: asArray(result.song),
+  };
+}
+
 /** Random songs from the library. */
 export async function getRandomSongs(config, size = 20) {
   const envelope = await request(config, 'getRandomSongs', { size });
   return asArray(envelope.randomSongs?.song);
 }
+
+/** Largest cover read from the server (bytes). */
+export const MAX_COVER_BYTES = 10 * 1024 * 1024;
 
 /**
  * Fetch a cover art and return it in the format the Gladys camera channel
@@ -274,6 +329,12 @@ export async function getCoverArt(config, id, size) {
     throw new SubsonicError(envelope.error?.code ?? 0, envelope.error?.message);
   }
 
+  // A server that ignores `size` could send the original file: never load
+  // a huge one in the 256 MB sandbox.
+  const length = Number(response.headers.get('content-length'));
+  if (length > MAX_COVER_BYTES) {
+    throw new Error(`getCoverArt answered ${length} bytes, more than ${MAX_COVER_BYTES}`);
+  }
   const mime = contentType.split(';')[0].trim();
   if (!mime.startsWith('image/')) {
     // Anything else (an HTML error page from a reverse proxy, an empty

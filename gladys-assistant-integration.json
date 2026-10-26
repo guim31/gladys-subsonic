@@ -10,10 +10,16 @@
   },
   "version": "1.2.2",
   "docker_image": "ghcr.io/guim31/gladys-subsonic:1.2.2",
-  "gladys_version": ">=5.1.0",
+  "gladys_version": ">=5.3.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-subsonic/main/cover.png",
   "categories": ["multimedia"],
   "transports": ["local"],
+  "music": {
+    "browse": true,
+    "search": true,
+    "queue": true,
+    "append": true
+  },
   "config_schema": [
     {
       "key": "intro",
@@ -186,6 +192,63 @@
       },
       "required": false,
       "default": false
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "display": "radio",
+      "label": {
+        "en": "Language of the music panel",
+        "fr": "Langue du panneau Musique",
+        "de": "Sprache des Musik-Panels",
+        "es": "Idioma del panel de música"
+      },
+      "description": {
+        "en": "Language of the folders and messages of the Gladys music panel (the integration cannot know yours).",
+        "fr": "Langue des dossiers et des messages du panneau Musique de Gladys (l'intégration ne peut pas connaître la vôtre).",
+        "de": "Sprache der Ordner und Meldungen des Musik-Panels von Gladys (die Integration kann deine nicht kennen).",
+        "es": "Idioma de las carpetas y los mensajes del panel de música de Gladys (la integración no puede conocer el suyo)."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [

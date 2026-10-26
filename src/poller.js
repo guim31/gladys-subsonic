@@ -76,7 +76,7 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
     const config = getConfig();
     if (force) {
       // Whatever the poll in progress stored (a cover) predates the change.
-      bp.forgetPublished?.();
+      bp.forgetPublished?.(gladys, config);
     }
     lastPolledAt.set(bp.key, now());
     const run = (async () => {
@@ -173,6 +173,22 @@ export function createPoller({ gladys, getConfig, timers = true, now = () => Dat
         return;
       }
       await pollBlueprint(bp, { force: true }).catch(() => {});
+    },
+
+    /**
+     * Read one device type again now, without forgetting what was published
+     * (the jukebox, right after a song should have ended). Only when its
+     * device is added to Gladys and Gladys is reachable.
+     * @param {string} key blueprint key
+     */
+    async refresh(key) {
+      if (stopped || gladys.connected === false) {
+        return;
+      }
+      const bp = createdBlueprints(getConfig()).find((candidate) => candidate.key === key);
+      if (bp) {
+        await pollBlueprint(bp, { minGap: 0 }).catch(() => {});
+      }
     },
 
     stop() {

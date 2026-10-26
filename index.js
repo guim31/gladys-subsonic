@@ -31,7 +31,8 @@ import {
   readScanStatus,
   SERVER_FEATURE,
 } from './src/devices/server.js';
-import { jukebox } from './src/devices/jukebox.js';
+import { jukebox, publishJukebox, setJukeboxFollowUp } from './src/devices/jukebox.js';
+import { createCatalog } from './src/catalog.js';
 import {
   WIDGET,
   buildNowPlayingContent,
@@ -62,6 +63,25 @@ const poller = createPoller({ gladys, getConfig: () => config });
 
 // A widget refreshed every 30 s against a server that is down: said once.
 const widgetIssues = createIssueLog(logger);
+
+// Right after a song should have ended, read the jukebox again.
+setJukeboxFollowUp(() => poller.refresh(jukebox.key));
+
+// The catalog of the Gladys 5.3 music panel: only the jukebox plays.
+const catalog = createCatalog({
+  gladys,
+  getConfig: () => config,
+  platformId: () => serverPlatformId(config),
+  isJukebox: (device) =>
+    isConfigured(config) &&
+    jukebox.enabled(config) &&
+    device?.external_id === jukebox.deviceExternalId(gladys, config),
+  // A command of the panel or of a scene changed the jukebox: show it now.
+  afterCommand: () =>
+    publishJukebox(gladys, config, { fresh: true }).catch((err) =>
+      logger.warn(`Jukebox state not published after a music command (${err.message})`),
+    ),
+});
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
@@ -98,6 +118,23 @@ gladys.onGetImage(async (device) => {
 // the fallback, skipped when the timer has just polled the device; a device
 // just added to Gladys is polled at once.
 poller.register();
+
+// --- Music panel and scenes (Gladys 5.3) --------------------------------------
+// Browse, search, play (also the `music.play-media` scene action), the
+// jukebox queue, and the artwork bytes (resized by the server, read with the
+// credentials). A throw is shown in the panel.
+gladys.onMusicBrowse((device, options) => catalog.browse(device, options));
+gladys.onMusicSearch((device, options) => catalog.search(device, options));
+gladys.onMusicPlay((device, media, mode) => {
+  logger.info(`onMusicPlay <- ${media?.type ?? '?'} ${media?.id ?? '?'} (${mode})`);
+  return catalog.play(device, media, mode);
+});
+gladys.onMusicQueueGet((device, options) => catalog.queueGet(device, options));
+gladys.onMusicQueuePlay((device, index) => {
+  logger.info(`onMusicQueuePlay <- ${index}`);
+  return catalog.queuePlay(device, index);
+});
+gladys.onMusicGetArtwork((key) => catalog.artwork(key));
 
 // --- Manifest actions: buttons in the Configuration screen -------------------
 // Each action declared in the `actions` field of the manifest is registered
